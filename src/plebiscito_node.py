@@ -11,35 +11,63 @@ import copy
 import logging
 import queue
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import requests
-import math
+import json
 
 TRACE = 5
-
 
 class InternalError(Exception):
     "Raised when the input value is less than 18"
     pass
 
+bids = None
+bids_lock = None
+q = None
 
 class PNode:
     class MyHandler(BaseHTTPRequestHandler):
         def do_POST(self):
+            global q
             content_length = int(self.headers["Content-Length"])
             post_data = self.rfile.read(content_length).decode("utf-8")
-            self.server.__q.put(post_data)
+            q.put(json.loads(post_data))
 
             # Send an HTTP response
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
             self.wfile.write(b"Request received")
-        
+
         def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"Hello, world!")
+            global bids, bids_lock
+            if self.path == "/":
+                self.send_response(200)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
+                self.wfile.write(b"Hello, world!")
+            elif self.path == "/about":
+                self.send_response(200)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
+                self.wfile.write(b"About page")
+            elif self.path.startswith("/transaction"):
+                with bids_lock:
+                    transaction_id = self.path.split("/")[-1]
+                    if transaction_id in bids:
+                        self.send_response(200)
+                        self.send_header("Content-type", "text/html")
+                        self.end_headers()
+                        self.wfile.write(str(bids["auction_id"]).encode("utf-8"))
+                    else:
+                        self.send_response(404)
+                        self.send_header("Content-type", "text/html")
+                        self.end_headers()
+                        self.wfile.write(f"Transaction not avaiable".encode("utf-8"))
+                
+            else:
+                self.send_response(404)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
+                self.wfile.write(b"Resource not found")
 
     def __init__(
         self,
@@ -51,6 +79,8 @@ class PNode:
         reduce_packets=False,
         timeout=0.05,
     ):
+        global bids, bids_lock, q
+
         self.__id = id  # unique edge node id
         self.__utility = utility
         self.__enable_logging = enable_logging
@@ -59,7 +89,7 @@ class PNode:
         self.__reduce_packets = reduce_packets
         self.__timeout = timeout
 
-        self.__q = queue.Queue()
+        q = queue.Queue()
 
         # TODO: update the initial values
         self.__initial_bw = 100000000000
@@ -72,9 +102,9 @@ class PNode:
         self.__updated_memory = self.__initial_memory
 
         self.__counter = {}
-
         self.__item = {}
-        self.__bids = {}
+        bids_lock = threading.Lock()
+        bids = {}
         self.__layer_bid_already = {}
 
         self.__server_thread = threading.Thread(
@@ -95,62 +125,47 @@ class PNode:
         return self.__updated_memory
 
     def get_available_resources(self):
-        return (
-            self.__updated_cpu,
-            self.__updated_gpu,
-            self.__updated_memory,
-            self.__updated_bw,
-        )
+        return (self.__updated_cpu, self.__updated_gpu, self.__updated_memory, self.__updated_bw)
 
     def __run_http_server(self):
         if self.__self_endpoint is None:
             server_address = ("", 8000)  # Listen on all interfaces, port 8000
         else:
-            server_address = (self.__self_endpoint.ip, self.__self_endpoint.port)
+            server_address = (self.__self_endpoint.get_IP(), self.__self_endpoint.get_port())
 
         # Pass the shared queue to the HTTP server
         httpd = HTTPServer(server_address, PNode.MyHandler)
-        httpd.__q = self.__q  # Attach the shared queue to the server
         httpd.serve_forever()
 
     def __init_null(self):
-        # print(self.__item['duration'])
-        self.__bids[self.__item["job_id"]] = {
-            "job_id": self.__item["job_id"],
-            "user": int(),
-            "auction_id": list(),
-            "Bundle_gpus": self.__item["Bundle_gpus"],
-            "Bundle_cpus": self.__item["Bundle_cpus"],
-            "Bundle_memory": self.__item["Bundle_memory"],
-            "Bundle_bw": self.__item["Bundle_bw"],
-            "bid": list(),
-            "timestamp": list(),
-            "arrival_time": datetime.now(),
-            "Bundle_min": self.__item["Bundle_min"],
-            "Bundle_max": self.__item["Bundle_max"],
-            "edge_id": self.__id,
-            "Bundle_size": self.__item["Bundle_size"],
-        }
+        with bids_lock:
+            bids[self.__item["job_id"]] = {
+                "job_id": self.__item["job_id"],
+                "user": int(),
+                "auction_id": list(),
+                "Bundle_gpus": self.__item["Bundle_gpus"],
+                "Bundle_cpus": self.__item["Bundle_cpus"],
+                "Bundle_memory": self.__item["Bundle_memory"],
+                "Bundle_bw": self.__item["Bundle_bw"],
+                "bid": list(),
+                "timestamp": list(),
+                "arrival_time": datetime.now(),
+                "Bundle_min": self.__item["Bundle_min"],
+                "Bundle_max": self.__item["Bundle_max"],
+                "edge_id": self.__id,
+                "Bundle_size": self.__item["Bundle_size"],
+                "bid": [float("-inf") for _ in range(self.__item["Bundle_size"])],
+                "auction_id": [float("-inf") for _ in range(self.__item["Bundle_size"])],
+                "timestamp": [datetime.now() - timedelta(days=1) for _ in range(self.__item["Bundle_size"])],
+            }
 
         self.__layer_bid_already[self.__item["job_id"]] = [False] * self.__item[
             "Bundle_size"
         ]
 
-        NN_len = len(self.__item["Bundle_gpus"])
-
-        for _ in range(0, NN_len):
-            self.__bids[self.__item["job_id"]]["bid"].append(float("-inf"))
-            self.__bids[self.__item["job_id"]]["auction_id"].append(float("-inf"))
-            self.__bids[self.__item["job_id"]]["timestamp"].append(
-                datetime.now() - timedelta(days=1)
-            )
-
     def __utility_function(self, avail_bw, avail_cpu, avail_gpu):
         if self.__utility == Utility.LGF:
             return avail_gpu
-
-    def __send_msg_to_endpoint(self, endpoint, msg):
-        _ = requests.post(endpoint.get_url(), data=msg)
 
     def __forward_to_neighbohors(
         self, custom_dict=None, resend_bid=False, first_msg=False
@@ -174,13 +189,13 @@ class PNode:
             return
 
         if custom_dict == None and not resend_bid:
-            msg["auction_id"] = copy.deepcopy(
-                self.__bids[self.__item["job_id"]]["auction_id"]
-            )
-            msg["bid"] = copy.deepcopy(self.__bids[self.__item["job_id"]]["bid"])
-            msg["timestamp"] = copy.deepcopy(
-                self.__bids[self.__item["job_id"]]["timestamp"]
-            )
+            with bids_lock:
+                msg["auction_id"] = copy.deepcopy(
+                    bids[self.__item["job_id"]]["auction_id"])
+                msg["bid"] = copy.deepcopy(
+                    bids[self.__item["job_id"]]["bid"])
+                msg["timestamp"] = copy.deepcopy(
+                    bids[self.__item["job_id"]]["timestamp"])
         elif custom_dict != None and not resend_bid:
             msg["auction_id"] = copy.deepcopy(custom_dict["auction_id"])
             msg["bid"] = copy.deepcopy(custom_dict["bid"])
@@ -195,9 +210,9 @@ class PNode:
         if self.__enable_logging:
             self.print_node_state("FORWARD", True)
 
-        for i in range(self.tot_nodes):
-            for e in self.__neighbors_endpoint:
-                self.__send_msg_to_endpoint(e, msg)
+        for e in self.__neighbors_endpoint:
+            e.send_msg(msg)
+        return
 
     def print_node_state(self, msg, bid=False, type="debug"):
         logger_method = getattr(logging, type)
@@ -218,25 +233,9 @@ class PNode:
             + str(self.__initial_cpu)
             + " available CPU:"
             + str(self.__updated_cpu)
-            +
-            # " initial BW:" + str(self.initial_bw) if hasattr(self, 'initial_bw') else str(0) +
-            # " available BW:" + str(self.updated_bw) if hasattr(self, 'updated_bw') else str(0)  +
-            # "\n" + str(self.__layer_bid_already[self.__item['job_id']]) +
-            (
-                (
-                    "\n" + str(self.__bids[self.__item["job_id"]]["auction_id"])
-                    if bid
-                    else ""
-                )
-                + (
-                    "\n" + str(self.__item.get("auction_id"))
-                    if bid and self.__item.get("auction_id") is not None
-                    else "\n"
-                )
-            )
         )
 
-    def update_local_val(self, tmp, index, id, bid, timestamp, lst):
+    def __update_local_val(self, tmp, index, id, bid, timestamp):
         tmp["job_id"] = self.__item["job_id"]
         tmp["auction_id"][index] = id
         tmp["bid"][index] = bid
@@ -253,22 +252,24 @@ class PNode:
     def compute_layer_score(self, cpu, gpu, bw):
         return gpu
 
+    def __bid_topology(self):
+        pass
+
     def __bid(self):
-        tmp_bid = copy.deepcopy(self.__bids[self.__item["job_id"]])
+        with bids_lock:
+            tmp_bid = copy.deepcopy(bids[self.__item["job_id"]])
+
         bidtime = datetime.now()
 
         # create an array containing the indices of the layers that can be bid on
         possible_layer = []
 
         # if I don't own any other layer, I can bid
-        if self.__id not in self.__bids[self.__item["job_id"]]["auction_id"]:
+        if self.__id not in tmp_bid["auction_id"]:
             for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
                 # include only those layers that have not been bid on yet and that can be executed on the node (i.e., the node has enough resources)
-                if (
-                    not self.__layer_bid_already[self.__item["job_id"]][i]
-                    and self.__item["Bundle_gpus"][i] <= self.__updated_gpu
-                    and self.__item["Bundle_cpus"][i] <= self.__updated_cpu
-                ):  # and self.__item['NN_data_size'][i] <= self.updated_bw:
+                # and self.__item['NN_data_size'][i] <= self.updated_bw:
+                if (not self.__layer_bid_already[self.__item["job_id"]][i] and self.__item["Bundle_gpus"][i] <= self.__updated_gpu and self.__item["Bundle_cpus"][i] <= self.__updated_cpu):
                     possible_layer.append(i)
         else:
             # if I already own at least one layer, I'm not allowed to bet anymore
@@ -286,7 +287,7 @@ class PNode:
                 score = self.compute_layer_score(
                     self.__item["Bundle_cpus"][l],
                     self.__item["Bundle_gpus"][l],
-                    self.__item["NN_data_size"][l],
+                    self.__item["Bundle_bw"][l],
                 )
                 if best_score == None or score > best_score:
                     best_score = score
@@ -294,10 +295,11 @@ class PNode:
 
             # compute the bid for the current layer, and remove it from the list of possible layers (no matter if the bid is valid or not)
             bid = self.__utility_function(
-                self.updated_bw, self.__updated_cpu, self.__updated_gpu
+                self.__updated_bw, self.__updated_cpu, self.__updated_gpu
             )
             # bid -= self.__id * 0.000000001
-            self.__layer_bid_already[self.__item["job_id"]][best_placement] = True
+            self.__layer_bid_already[self.__item["job_id"]
+                                     ][best_placement] = True
             possible_layer.remove(best_placement)
 
             # if my bid is higher than the current bid, I can bid on the layer
@@ -348,7 +350,7 @@ class PNode:
                         left_score = self.compute_layer_score(
                             self.__item["Bundle_cpus"][left_bound],
                             self.__item["Bundle_gpus"][left_bound],
-                            self.__item["NN_data_size"][left_bound],
+                            self.__item["Bundle_bw"][left_bound],
                         )
 
                     if (
@@ -364,7 +366,7 @@ class PNode:
                         right_score = self.compute_layer_score(
                             self.__item["Bundle_cpus"][right_bound],
                             self.__item["Bundle_gpus"][right_bound],
-                            self.__item["NN_data_size"][right_bound],
+                            self.__item["Bundle_bw"][right_bound],
                         )
 
                     target_layer = None
@@ -474,9 +476,10 @@ class PNode:
                 if success:
                     self.__updated_cpu -= cpu_
                     self.__updated_gpu -= gpu_
-                    # self.updated_bw -= bw_
 
-                    self.__bids[self.__item["job_id"]] = copy.deepcopy(tmp_bid)
+                    with bids_lock:
+                        bids[self.__item["job_id"]
+                                    ] = copy.deepcopy(tmp_bid)
 
                     for l in layers:
                         self.__layer_bid_already[self.__item["job_id"]][l] = True
@@ -490,8 +493,9 @@ class PNode:
         k = self.__item["edge_id"]  # sender
         i = self.__id  # receiver
 
-        tmp_local = copy.deepcopy(self.__bids[self.__item["job_id"]])
-        prev_bet = copy.deepcopy(self.__bids[self.__item["job_id"]])
+        with bids_lock:
+            tmp_local = copy.deepcopy(bids[self.__item["job_id"]])
+            prev_bet = copy.deepcopy(bids[self.__item["job_id"]])
         index = 0
         reset_flag = False
         reset_ids = []
@@ -532,116 +536,120 @@ class PNode:
                     if y_kj > y_ij:
                         rebroadcast = True
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #1")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #1")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
-                            t_kj,
-                            self.__bids[self.__item["job_id"]],
+                            t_kj
                         )
 
                     elif y_kj == y_ij and z_kj < z_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #3")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #3")
                         rebroadcast = True
-                        index = self.update_local_val(
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
 
                     else:
                         rebroadcast = True
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #2")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #2")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_ij,
                             tmp_local["bid"][index],
                             bid_time,
-                            self.__item,
                         )
 
                 elif z_ij == k:
                     if t_kj > t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#4")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#4")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     else:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #5 - 6")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #5 - 6")
                         index += 1
 
                 elif z_ij == float("-inf"):
                     if self.__enable_logging:
                         logging.log(TRACE, "NODEID:" + str(self.__id) + " #12")
-                    index = self.update_local_val(
+                    index = self.__update_local_val(
                         tmp_local,
                         index,
                         z_kj,
                         y_kj,
                         t_kj,
-                        self.__bids[self.__item["job_id"]],
                     )
                     rebroadcast = True
 
                 elif z_ij != i and z_ij != k:
                     if y_kj >= y_ij and t_kj >= t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #7")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #7")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     elif y_kj < y_ij and t_kj < t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #8")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #8")
                         index += 1
                         rebroadcast = True
                     elif y_kj == y_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #9")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #9")
                         rebroadcast = True
                         index += 1
                     elif y_kj < y_ij and t_kj >= t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #10reset")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #10reset")
                         index += 1
                         rebroadcast = True
                     elif y_kj > y_ij and t_kj < t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #11rest")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #11rest")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     else:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #11else")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #11else")
                         index += 1
                         rebroadcast = True
                 else:
@@ -654,27 +662,29 @@ class PNode:
                     if t_kj > t_ij:
                         if self.__enable_logging:
                             logging.log(
-                                TRACE, "NODEID:" + str(self.__id) + " #13Flavio"
+                                TRACE, "NODEID:" +
+                                str(self.__id) + " #13Flavio"
                             )
-                        index = self.update_local_val(
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     else:
                         if self.__enable_logging:
                             logging.log(
-                                TRACE, "NODEID:" + str(self.__id) + " #13elseFlavio"
+                                TRACE, "NODEID:" +
+                                str(self.__id) + " #13elseFlavio"
                             )
                         index += 1
 
                 elif z_ij == k:
                     if self.__enable_logging:
-                        logging.log(TRACE, "NODEID:" + str(self.__id) + " #14reset")
+                        logging.log(TRACE, "NODEID:" +
+                                    str(self.__id) + " #14reset")
                     reset_ids.append(index)
                     index += 1
                     reset_flag = True
@@ -694,7 +704,8 @@ class PNode:
 
                 else:
                     if self.__enable_logging:
-                        logging.log(TRACE, "NODEID:" + str(self.__id) + " #15else")
+                        logging.log(TRACE, "NODEID:" +
+                                    str(self.__id) + " #15else")
                     rebroadcast = True
                     index += 1
 
@@ -708,13 +719,12 @@ class PNode:
                 elif z_ij == k:
                     if self.__enable_logging:
                         logging.log(TRACE, "NODEID:" + str(self.__id) + " #32")
-                    index = self.update_local_val(
+                    index = self.__update_local_val(
                         tmp_local,
                         index,
                         z_kj,
                         y_kj,
                         t_kj,
-                        self.__bids[self.__item["job_id"]],
                     )
                     rebroadcast = True
 
@@ -726,24 +736,26 @@ class PNode:
                 elif z_ij != i and z_ij != k:
                     if t_kj > t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #33")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #33")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     else:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #33else")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #33else")
                         index += 1
 
                 else:
                     if self.__enable_logging:
-                        logging.log(TRACE, "NODEID:" + str(self.__id) + " #33elseelse")
+                        logging.log(TRACE, "NODEID:" +
+                                    str(self.__id) + " #33elseelse")
                     index += 1
                     rebroadcast = True
 
@@ -751,148 +763,153 @@ class PNode:
                 if z_ij == i:
                     if y_kj > y_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#16")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#16")
                         rebroadcast = True
-                        index = self.update_local_val(
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                     elif y_kj == y_ij and z_kj < z_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#17")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#17")
                         rebroadcast = True
-                        index = self.update_local_val(
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                     else:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#19")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#19")
                         rebroadcast = True
-                        index = self.update_local_val(
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_ij,
                             tmp_local["bid"][index],
                             bid_time,
-                            self.__item,
                         )
 
                 elif z_ij == k:
                     if y_kj > y_ij:
                         if self.__enable_logging:
                             logging.log(
-                                TRACE, "NODEID:" + str(self.__id) + " #20Flavio"
+                                TRACE, "NODEID:" +
+                                str(self.__id) + " #20Flavio"
                             )
-                        index = self.update_local_val(
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     elif t_kj > t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#20")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#20")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     else:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#21reset")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#21reset")
                         index += 1
                         rebroadcast = True
 
                 elif z_ij == z_kj:
                     if t_kj > t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#22")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#22")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     else:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + " #23 - 24")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + " #23 - 24")
                         index += 1
 
                 elif z_ij == float("-inf"):
                     if self.__enable_logging:
                         logging.log(TRACE, "NODEID:" + str(self.__id) + "#30")
-                    index = self.update_local_val(
+                    index = self.__update_local_val(
                         tmp_local,
                         index,
                         z_kj,
                         y_kj,
                         t_kj,
-                        self.__bids[self.__item["job_id"]],
                     )
                     rebroadcast = True
 
                 elif z_ij != i and z_ij != k and z_ij != z_kj:
                     if y_kj >= y_ij and t_kj >= t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#25")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#25")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     elif y_kj < y_ij and t_kj < t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#26")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#26")
                         rebroadcast = True
                         index += 1
                     elif y_kj < y_ij and t_kj > t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#28")
-                        index = self.update_local_val(
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#28")
+                        index = self.__update_local_val(
                             tmp_local,
                             index,
                             z_kj,
                             y_kj,
                             t_kj,
-                            self.__bids[self.__item["job_id"]],
                         )
                         rebroadcast = True
                     elif y_kj > y_ij and t_kj < t_ij:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#29")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#29")
                         index += 1
                         rebroadcast = True
                     else:
                         if self.__enable_logging:
-                            logging.log(TRACE, "NODEID:" + str(self.__id) + "#29else")
+                            logging.log(TRACE, "NODEID:" +
+                                        str(self.__id) + "#29else")
                         index += 1
 
                 else:
                     if self.__enable_logging:
-                        logging.log(TRACE, "NODEID:" + str(self.__id) + " #29else2")
+                        logging.log(TRACE, "NODEID:" +
+                                    str(self.__id) + " #29else2")
                     index += 1
 
             else:
@@ -907,7 +924,8 @@ class PNode:
                 msg_to_resend["bid"][i] = self.__item["bid"][i]
                 msg_to_resend["timestamp"][i] = self.__item["timestamp"][i]
 
-            self.__bids[self.__item["job_id"]] = copy.deepcopy(tmp_local)
+            with bids_lock:
+                bids[self.__item["job_id"]] = copy.deepcopy(tmp_local)
             self.__forward_to_neighbohors(msg_to_resend)
             return False
 
@@ -939,61 +957,59 @@ class PNode:
         self.__updated_cpu += cpu
         self.__updated_gpu += gpu
 
-        self.__bids[self.__item["job_id"]] = copy.deepcopy(tmp_local)
+        with bids_lock:
+            bids[self.__item["job_id"]] = copy.deepcopy(tmp_local)
 
         return rebroadcast
 
-    def __update_bid(self):
+    def __update_bid(self, bidfunc):
         if self.__enable_logging:
             self.print_node_state("BEFORE", True)
 
         if "auction_id" in self.__item:
-            # Consensus check
-            if (
-                self.__bids[self.__item["job_id"]]["auction_id"]
-                == self.__item["auction_id"]
-                and self.__bids[self.__item["job_id"]]["bid"] == self.__item["bid"]
-                and self.__bids[self.__item["job_id"]]["timestamp"]
-                == self.__item["timestamp"]
-                and float("-inf")
-                not in self.__bids[self.__item["job_id"]]["auction_id"]
-            ):
+            with bids_lock:
+                if (bids[self.__item["job_id"]]["auction_id"] == self.__item["auction_id"]
+                    and bids[self.__item["job_id"]]["bid"] == self.__item["bid"]
+                    and bids[self.__item["job_id"]]["timestamp"] == self.__item["timestamp"]
+                    and float("-inf") not in bids[self.__item["job_id"]]["auction_id"]):
 
-                if self.__enable_logging:
-                    self.print_node_state("Consensus -", True)
-                    self.__bids[self.__item["job_id"]]["consensus_count"] += 1
-                    # pass
-            else:
-                rebroadcast = self.__deconfliction()
-                success = self.__bid()
+                    if self.__enable_logging:
+                        self.print_node_state("Consensus -", True)
+                        # pass
+                else:
+                    rebroadcast = self.__deconfliction()
+                    success = bidfunc()
 
-                return success or rebroadcast
+                    return success or rebroadcast
         else:
             self.__bid()
             return True
 
     def __check_if_hosting_job(self):
-        if (
-            self.__item["job_id"] in self.__bids
-            and self.__id in self.__bids[self.__item["job_id"]]["auction_id"]
-        ):
-            return True
-        return False
+        with bids_lock:
+            if (
+                self.__item["job_id"] in bids
+                and self.__id in bids[self.__item["job_id"]]["auction_id"]
+            ):
+                return True
+            return False
 
     def __release_resources(self):
         cpu = 0
         gpu = 0
 
-        for i, id in enumerate(self.__bids[self.__item["job_id"]]["auction_id"]):
-            if id == self.__id:
-                cpu += self.__item["Bundle_cpus"][i]
-                gpu += self.__item["Bundle_gpus"][i]
+        with bids_lock:
+            for i, id in enumerate(bids[self.__item["job_id"]]["auction_id"]):
+                if id == self.__id:
+                    cpu += self.__item["Bundle_cpus"][i]
+                    gpu += self.__item["Bundle_gpus"][i]
 
         self.__updated_cpu += cpu
         self.__updated_gpu += gpu
-        
-    def start_daemon(self, stop_event = None):
-        self.__daemon = threading.Thread(target=self.__work, args=(stop_event,))
+
+    def start_daemon(self, stop_event=None):
+        self.__daemon = threading.Thread(
+            target=self.__work, args=(stop_event,))
         self.__daemon.start()
 
     def __work(self, end_processing):
@@ -1009,40 +1025,29 @@ class PNode:
                 for it in items:
                     self.__item = it
 
-                    if self.__item["type"] == "topology":
-                        pass
-                    elif self.__item["type"] == "unallocate":
-                        pass
-                    elif self.__item["type"] == "allocate":
-                        pass
+                    if self.__item["type"] == "unallocate":
+                        if self.__check_if_hosting_job():
+                            self.__release_resources()
 
-                    # if "unallocate" in self.__item:
-                    #     if self.__check_if_hosting_job():
-                    #         self.__release_resources()
+                        with bids_lock:
+                            if self.__item["job_id"] in bids:
+                                del bids[self.__item["job_id"]]
+                                del self.__counter[self.__item["job_id"]]
+                    else:
+                        first_msg = False
 
-                    #     if self.__item["job_id"] in self.__bids:
-                    #         del self.__bids[self.__item["job_id"]]
-                    #         del self.__counter[self.__item["job_id"]]
+                        if self.__item["job_id"] not in self.__counter:
+                            self.__init_null()
+                            first_msg = True
+                            self.__counter[self.__item["job_id"]] = 0
+                        self.__counter[self.__item["job_id"]] += 1
 
-                    # else:
-                    #     first_msg = False
+                        if self.__item["type"] == "topology":
+                            success = self.__update_bid(self.__bid_topology)
+                        elif self.__item["type"] == "allocate":
+                            success = self.__update_bid(self.__bid)
 
-                    #     if self.__item["job_id"] not in self.__counter:
-                    #         self.__init_null()
-                    #         first_msg = True
-                    #         self.__counter[self.__item["job_id"]] = 0
-                    #     self.__counter[self.__item["job_id"]] += 1
-
-                    #     if self.__enable_logging:
-                    #         self.print_node_state(
-                    #             "IF1 q:" + str(self.__q[self.__id].qsize())
-                    #         )
-
-                    #     success = self.__update_bid()
-
-                    #     need_rebroadcast = need_rebroadcast or success
-
-                    #     self.__bids[self.__item["job_id"]]["count"] += 1
+                        need_rebroadcast = need_rebroadcast or success
 
                 if need_rebroadcast:
                     self.__forward_to_neighbohors()
@@ -1050,17 +1055,18 @@ class PNode:
                     self.__forward_to_neighbohors(first_msg=True)
 
             except Empty:
-                if end_processing.is_set():
+                if end_processing is not None and end_processing.is_set():
                     return
 
     def __extract_all_job_msg(self):
+        global q
         first = True
         job_id = None
         items = []
         _items = []
         while True:
             try:
-                it = self.__q.get(timeout=self.__timeout)
+                it = q.get(timeout=self.__timeout)
                 self.already_finished = False
                 if first:
                     first = False
