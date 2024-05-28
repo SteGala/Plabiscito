@@ -1,3 +1,6 @@
+import requests
+
+
 class Endpoint:
     def __init__(self, name, ip, port):
         self.__name = name
@@ -6,7 +9,10 @@ class Endpoint:
 
     def get_url(self):
         return f"{self.__ip}:{self.__port}"
-
+    
+    def send_msg(self, msg):
+        _ = requests.post(self.get_url(), data=msg)
+        
     def __str__(self):
         return f"{self.__name} ({self.__ip}:{self.__port})"
 

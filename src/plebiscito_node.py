@@ -12,8 +12,6 @@ import logging
 import queue
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
-
-
 import math
 
 TRACE = 5
@@ -25,7 +23,6 @@ class InternalError(Exception):
 
 
 class PNode:
-
     class MyHandler(BaseHTTPRequestHandler):
         def do_POST(self):
             content_length = int(self.headers["Content-Length"])
@@ -46,6 +43,7 @@ class PNode:
         neighbors_endpoint=[],
         enable_logging=False,
         reduce_packets=False,
+        timeout=0.05,
     ):
         self.__id = id  # unique edge node id
         self.__utility = utility
@@ -53,6 +51,7 @@ class PNode:
         self.__neighbors_endpoint = neighbors_endpoint
         self.__self_endpoint = self_endpoint
         self.__reduce_packets = reduce_packets
+        self.__timeout = timeout
 
         self.__q = queue.Queue()
 
@@ -141,7 +140,7 @@ class PNode:
             )
 
     def __utility_function(self, avail_bw, avail_cpu, avail_gpu):
-        if self.utility == Utility.LGF:
+        if self.__utility == Utility.LGF:
             return avail_gpu
 
     def __send_msg_to_endpoint(self, endpoint, msg):
@@ -165,7 +164,7 @@ class PNode:
 
         if first_msg:
             for e in self.__neighbors_endpoint:
-                self.__send_msg_to_endpoint(e, msg)
+                e.send_msg(msg)
             return
 
         if custom_dict == None and not resend_bid:
@@ -248,7 +247,7 @@ class PNode:
     def compute_layer_score(self, cpu, gpu, bw):
         return gpu
 
-    def bid(self):
+    def __bid(self):
         tmp_bid = copy.deepcopy(self.__bids[self.__item["job_id"]])
         bidtime = datetime.now()
 
@@ -480,7 +479,7 @@ class PNode:
 
         return False
 
-    def deconfliction(self):
+    def __deconfliction(self):
         rebroadcast = False
         k = self.__item["edge_id"]  # sender
         i = self.__id  # receiver
@@ -938,7 +937,7 @@ class PNode:
 
         return rebroadcast
 
-    def update_bid(self):
+    def __update_bid(self):
         if self.__enable_logging:
             self.print_node_state("BEFORE", True)
 
@@ -959,15 +958,15 @@ class PNode:
                     self.__bids[self.__item["job_id"]]["consensus_count"] += 1
                     # pass
             else:
-                rebroadcast = self.deconfliction()
-                success = self.bid()
+                rebroadcast = self.__deconfliction()
+                success = self.__bid()
 
                 return success or rebroadcast
         else:
-            self.bid()
+            self.__bid()
             return True
 
-    def check_if_hosting_job(self):
+    def __check_if_hosting_job(self):
         if (
             self.__item["job_id"] in self.__bids
             and self.__id in self.__bids[self.__item["job_id"]]["auction_id"]
@@ -986,15 +985,18 @@ class PNode:
 
         self.__updated_cpu += cpu
         self.__updated_gpu += gpu
+        
+    def start_daemon(self, stop_event = None):
+        self.__daemon = threading.Thread(target=self.__work, args=(stop_event,))
+        self.__daemon.start()
 
-    def work(self, end_processing):
-        timeout = 0.05
+    def __work(self, end_processing):
         self.already_finished = True
 
         while True:
             try:
                 self.__item = None
-                items = self.__extract_all_job_msg(timeout)
+                items = self.__extract_all_job_msg()
                 first_msg = False
                 need_rebroadcast = False
 
@@ -1002,7 +1004,7 @@ class PNode:
                     self.__item = it
 
                     if "unallocate" in self.__item:
-                        if self.check_if_hosting_job():
+                        if self.__check_if_hosting_job():
                             self.__release_resources()
 
                         if self.__item["job_id"] in self.__bids:
@@ -1023,7 +1025,7 @@ class PNode:
                                 "IF1 q:" + str(self.__q[self.__id].qsize())
                             )
 
-                        success = self.update_bid()
+                        success = self.__update_bid()
 
                         need_rebroadcast = need_rebroadcast or success
 
@@ -1038,14 +1040,14 @@ class PNode:
                 if end_processing.is_set():
                     return
 
-    def __extract_all_job_msg(self, timeout):
+    def __extract_all_job_msg(self):
         first = True
         job_id = None
         items = []
         _items = []
         while True:
             try:
-                it = self.__q.get(timeout=timeout)
+                it = self.__q.get(timeout=self.__timeout)
                 self.already_finished = False
                 if first:
                     first = False
