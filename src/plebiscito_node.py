@@ -34,6 +34,12 @@ class PNode:
             self.send_header("Content-type", "text/html")
             self.end_headers()
             self.wfile.write(b"Request received")
+        
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"Hello, world!")
 
     def __init__(
         self,
@@ -1003,33 +1009,40 @@ class PNode:
                 for it in items:
                     self.__item = it
 
-                    if "unallocate" in self.__item:
-                        if self.__check_if_hosting_job():
-                            self.__release_resources()
+                    if self.__item["type"] == "topology":
+                        pass
+                    elif self.__item["type"] == "unallocate":
+                        pass
+                    elif self.__item["type"] == "allocate":
+                        pass
 
-                        if self.__item["job_id"] in self.__bids:
-                            del self.__bids[self.__item["job_id"]]
-                            del self.__counter[self.__item["job_id"]]
+                    # if "unallocate" in self.__item:
+                    #     if self.__check_if_hosting_job():
+                    #         self.__release_resources()
 
-                    else:
-                        first_msg = False
+                    #     if self.__item["job_id"] in self.__bids:
+                    #         del self.__bids[self.__item["job_id"]]
+                    #         del self.__counter[self.__item["job_id"]]
 
-                        if self.__item["job_id"] not in self.__counter:
-                            self.__init_null()
-                            first_msg = True
-                            self.__counter[self.__item["job_id"]] = 0
-                        self.__counter[self.__item["job_id"]] += 1
+                    # else:
+                    #     first_msg = False
 
-                        if self.__enable_logging:
-                            self.print_node_state(
-                                "IF1 q:" + str(self.__q[self.__id].qsize())
-                            )
+                    #     if self.__item["job_id"] not in self.__counter:
+                    #         self.__init_null()
+                    #         first_msg = True
+                    #         self.__counter[self.__item["job_id"]] = 0
+                    #     self.__counter[self.__item["job_id"]] += 1
 
-                        success = self.__update_bid()
+                    #     if self.__enable_logging:
+                    #         self.print_node_state(
+                    #             "IF1 q:" + str(self.__q[self.__id].qsize())
+                    #         )
 
-                        need_rebroadcast = need_rebroadcast or success
+                    #     success = self.__update_bid()
 
-                        self.__bids[self.__item["job_id"]]["count"] += 1
+                    #     need_rebroadcast = need_rebroadcast or success
+
+                    #     self.__bids[self.__item["job_id"]]["count"] += 1
 
                 if need_rebroadcast:
                     self.__forward_to_neighbohors()

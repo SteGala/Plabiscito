@@ -9,7 +9,7 @@ class PClient:
         self.__port = port
         self.__client_id = client_id
 
-    def request_topology(self, ):
+    def request_topology(self, timeout=2):
         msg = {}
         msg["type"] = "topology"
         msg[]
