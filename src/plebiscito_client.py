@@ -1,11 +1,10 @@
 from enum import Enum
 import json
-import random
+import hashlib
 import time
-import numpy as np
 
 import requests
-
+from datetime import datetime
 
 class PClient:
     def __init__(self, host, port, client_id):
@@ -18,10 +17,16 @@ class PClient:
         msg["type"] = "topology"
         _ = requests.post(self.get_url(), data=msg)
 
-    def request_allocation(self, job_id, cpus=[], gpus=[], bw=[], mem=[], min_bundle=0, max_bundle=10000, duration=1, timeout=2):       
+    def request_allocation(self, cpus=[], gpus=[], bw=[], mem=[], min_bundle=0, max_bundle=10000, duration=1, timeout=2):       
         if not (len(cpus) == len(gpus) == len(bw) == len(mem)):
             print("The resource arrays must be of the same lenght!")
             return
+        
+        timestamp_str = datetime.now().isoformat() 
+        hash_object = hashlib.sha256(timestamp_str.encode('utf-8'))
+        hash_hex = hash_object.hexdigest()
+        job_id = hash_hex[:10]
+        print(f"Job ID: {job_id}")
         
         data = {
             "type": "allocate", 
@@ -42,7 +47,9 @@ class PClient:
 
         _ = requests.post(self.__host + ":" + str(self.__port), data=json_data.encode('utf-8'))
 
+        return job_id
+
 if __name__ == '__main__':
-    client = PClient("http://localhost", 9090, "client1")
-    client.request_allocation(job_id="1", cpus=[1], gpus=[0], bw=[0], mem=[0], duration=5)
+    client = PClient("http://localhost", 9092, "client1")
+    client.request_allocation(cpus=[1], gpus=[1], bw=[1], mem=[1], duration=5)
         

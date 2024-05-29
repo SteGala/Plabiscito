@@ -25,6 +25,9 @@ q = None
 
 class PNode:
     class MyHandler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return
+        
         def do_POST(self):
             global q
             content_length = int(self.headers["Content-Length"])
@@ -51,17 +54,27 @@ class PNode:
                 self.wfile.write(b"About page")
             elif self.path.startswith("/transaction"):
                 with bids_lock:
-                    transaction_id = self.path.split("/")[-1]
-                    if transaction_id in bids:
+                    if len(self.path.split("/")) != 2:
+                        transaction_id = self.path.split("/")[-1]
+                        if transaction_id in bids:
+                            self.send_response(200)
+                            self.send_header("Content-type", "text/html")
+                            self.end_headers()
+                            self.wfile.write(str(bids[transaction_id]["auction_id"]).encode("utf-8"))
+                        else:
+                            print(transaction_id)
+                            self.send_response(404)
+                            self.send_header("Content-type", "text/html")
+                            self.end_headers()
+                            self.wfile.write(f"Transaction not avaiable".encode("utf-8"))
+                    else:
+                        ret = ""
+                        for k, v in bids.items():
+                            ret += f"Transaction ID ({k}): &emsp; {v['auction_id']}<br>"
                         self.send_response(200)
                         self.send_header("Content-type", "text/html")
                         self.end_headers()
-                        self.wfile.write(str(bids[transaction_id]["auction_id"]).encode("utf-8"))
-                    else:
-                        self.send_response(404)
-                        self.send_header("Content-type", "text/html")
-                        self.end_headers()
-                        self.wfile.write(f"Transaction not avaiable".encode("utf-8"))
+                        self.wfile.write(ret.encode("utf-8"))
                 
             else:
                 self.send_response(404)
@@ -69,16 +82,7 @@ class PNode:
                 self.end_headers()
                 self.wfile.write(b"Resource not found")
 
-    def __init__(
-        self,
-        id,
-        utility=Utility.LGF,
-        self_endpoint=Endpoint("e", "localhost", "9191"),
-        neighbors_endpoint=[],
-        enable_logging=False,
-        reduce_packets=False,
-        timeout=0.05,
-    ):
+    def __init__(self, id, utility=Utility.LGF, self_endpoint=Endpoint("e", "localhost", "9191"), neighbors_endpoint=[], enable_logging=False, reduce_packets=False, timeout=0.05):
         global bids, bids_lock, q
 
         self.__id = id  # unique edge node id
@@ -92,10 +96,10 @@ class PNode:
         q = queue.Queue()
 
         # TODO: update the initial values
-        self.__initial_bw = 100000000000
-        self.__initial_cpu = 4
-        self.__initial_gpu = 1
-        self.__initial_memory = 100000000000
+        self.__initial_bw = 3
+        self.__initial_cpu = 3
+        self.__initial_gpu = 3
+        self.__initial_memory = 3
         self.__updated_bw = self.__initial_bw
         self.__updated_gpu = self.__initial_gpu
         self.__updated_cpu = self.__initial_cpu
@@ -106,10 +110,9 @@ class PNode:
         bids_lock = threading.Lock()
         bids = {}
         self.__layer_bid_already = {}
+        self.__tasks_from_clients = []
 
-        self.__server_thread = threading.Thread(
-            target=self.__run_http_server, daemon=True
-        )
+        self.__server_thread = threading.Thread(target=self.__run_http_server, daemon=True)
         self.__server_thread.start()
 
     def get_avail_gpu(self):
@@ -139,6 +142,9 @@ class PNode:
 
     def __init_null(self):
         global bids, bids_lock
+
+        print(f"First message for transaction {self.__item['job_id']}")
+
         with bids_lock:
             bids[self.__item["job_id"]] = {
                 "job_id": self.__item["job_id"],
@@ -159,18 +165,18 @@ class PNode:
                 "auction_id": [float("-inf") for _ in range(self.__item["Bundle_size"])],
                 "timestamp": [datetime.timestamp(datetime.now() - timedelta(days=1)) for _ in range(self.__item["Bundle_size"])],
             }
+        #     if "Submitter_truth" in self.__item:
+        #         bids[self.__item["job_id"]]["Submitter_truth"] = self.__item["Submitter_truth"]
+        #     else:
+        #         bids[self.__item["job_id"]]["Submitter_truth"] = None
 
-        self.__layer_bid_already[self.__item["job_id"]] = [False] * self.__item[
-            "Bundle_size"
-        ]
+        # self.__layer_bid_already[self.__item["job_id"]] = [False] * self.__item["Bundle_size"]
 
     def __utility_function(self, avail_bw, avail_cpu, avail_gpu):
         if self.__utility == Utility.LGF:
             return avail_gpu
 
-    def __forward_to_neighbohors(
-        self, custom_dict=None, resend_bid=False, first_msg=False
-    ):
+    def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock
         msg = {
             "type": self.__item["type"],
@@ -185,7 +191,6 @@ class PNode:
             "Bundle_min": self.__item["Bundle_min"],
             "Bundle_max": self.__item["Bundle_max"],
         }
-
         if first_msg:
             for e in self.__neighbors_endpoint:
                 e.send_msg(msg)
@@ -212,7 +217,7 @@ class PNode:
 
         if self.__enable_logging:
             self.print_node_state("FORWARD", True)
-
+        
         for e in self.__neighbors_endpoint:
             e.send_msg(msg)
         return
@@ -220,23 +225,7 @@ class PNode:
     def print_node_state(self, msg, bid=False, type="debug"):
         logger_method = getattr(logging, type)
         # print(str(self.__item.get('auction_id')) if bid and self.__item.get('auction_id') is not None else "\n")
-        logger_method(
-            str(msg)
-            + " job_id:"
-            + str(self.__item["job_id"])
-            + " NODEID:"
-            + str(self.__id)
-            + " from_edge:"
-            + str(self.__item["edge_id"])
-            + " initial GPU:"
-            + str(self.__initial_gpu)
-            + " available GPU:"
-            + str(self.__updated_gpu)
-            + " initial CPU:"
-            + str(self.__initial_cpu)
-            + " available CPU:"
-            + str(self.__updated_cpu)
-        )
+        logger_method(str(msg) + " job_id:" + str(self.__item["job_id"]) + " NODEID:" + str(self.__id) + " from_edge:" + str(self.__item["edge_id"]) + " initial GPU:" + str(self.__initial_gpu) + " available GPU:" + str(self.__updated_gpu) + " initial CPU:" + str(self.__initial_cpu) + " available CPU:" + str(self.__updated_cpu))
 
     def __update_local_val(self, tmp, index, id, bid, timestamp):
         tmp["job_id"] = self.__item["job_id"]
@@ -258,6 +247,15 @@ class PNode:
     def __bid_topology(self):
         pass
 
+    def __can_host(self, i, diff_cpu=0, diff_gpu=0, diff_bw=0, diff_memory=0):
+        if (not self.__layer_bid_already[self.__item["job_id"]][i] and
+                self.__item["Bundle_gpus"][i] <= self.__updated_gpu - diff_gpu and 
+                self.__item["Bundle_cpus"][i] <= self.__updated_cpu - diff_cpu and 
+                self.__item["Bundle_bw"][i] <= self.__updated_bw - diff_bw and
+                self.__item["Bundle_memory"][i] <= self.__updated_memory - diff_memory): 
+            return True
+        return False
+
     def __bid(self):
         global bids, bids_lock
         with bids_lock:
@@ -265,28 +263,19 @@ class PNode:
 
         bidtime = datetime.timestamp(datetime.now())
 
-        # create an array containing the indices of the layers that can be bid on
         possible_layer = []
 
-        # if I don't own any other layer, I can bid
         if self.__id not in tmp_bid["auction_id"]:
             for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
-                # include only those layers that have not been bid on yet and that can be executed on the node (i.e., the node has enough resources)
-                # and self.__item['NN_data_size'][i] <= self.updated_bw:
-                if (not self.__layer_bid_already[self.__item["job_id"]][i] and self.__item["Bundle_gpus"][i] <= self.__updated_gpu and self.__item["Bundle_cpus"][i] <= self.__updated_cpu):
+                if self.__can_host(i):
                     possible_layer.append(i)
         else:
-            # if I already own at least one layer, I'm not allowed to bet anymore
-            # otherwise I break the property of monotonicity
             return False
 
-        # if there are no layers that can be bid on, return
-        # as the iteration goes on, the number of possible layers decreases (i.e., remove the ufeasible layers)
         while len(possible_layer) > 0:
             best_placement = None
             best_score = None
 
-            # iterate on the identify the preferable layer to bid on
             for l in possible_layer:
                 score = self.compute_layer_score(
                     self.__item["Bundle_cpus"][l],
@@ -297,24 +286,15 @@ class PNode:
                     best_score = score
                     best_placement = l
 
-            # compute the bid for the current layer, and remove it from the list of possible layers (no matter if the bid is valid or not)
-            bid = self.__utility_function(
-                self.__updated_bw, self.__updated_cpu, self.__updated_gpu
-            )
-            # bid -= self.__id * 0.000000001
-            self.__layer_bid_already[self.__item["job_id"]
-                                     ][best_placement] = True
+            bid = self.__utility_function(self.__updated_bw, self.__updated_cpu, self.__updated_gpu)
+            self.__layer_bid_already[self.__item["job_id"]][best_placement] = True
             possible_layer.remove(best_placement)
 
-            # if my bid is higher than the current bid, I can bid on the layer
-            if bid > tmp_bid["bid"][best_placement] or (
-                bid == tmp_bid["bid"][best_placement]
-                and self.__id < tmp_bid["auction_id"][best_placement]
-            ):
-
+            if bid > tmp_bid["bid"][best_placement] or (bid == tmp_bid["bid"][best_placement] and self.__id < tmp_bid["auction_id"][best_placement]):
                 gpu_ = self.__item["Bundle_gpus"][best_placement]
                 cpu_ = self.__item["Bundle_cpus"][best_placement]
-                # bw_ = self.__item["NN_data_size"][best_placement]
+                bw_ = self.__item["Bundle_bw"][best_placement]
+                mem_ = self.__item["Bundle_memory"][best_placement]
 
                 Bundle_size = 1
 
@@ -327,11 +307,9 @@ class PNode:
                 left_bound = best_placement
                 right_bound = best_placement
 
-                # the success is checked at the end of the while loop. If it is true, it means that the bid is valid
                 success = False
 
                 while True:
-                    # if I already bid on the maximum number of layers, return with success
                     if Bundle_size == self.__item["Bundle_max"]:
                         success = True
                         break
@@ -342,31 +320,14 @@ class PNode:
                     left_score = None
                     right_score = None
 
-                    if (
-                        left_bound >= 0
-                        and self.__layer_bid_already[self.__item["job_id"]][left_bound]
-                        == False
-                        and self.__item["Bundle_gpus"][left_bound]
-                        <= self.__updated_gpu - gpu_
-                        and self.__item["Bundle_cpus"][left_bound]
-                        <= self.__updated_cpu - cpu_
-                    ):
+                    if (left_bound >= 0 and self.__can_host(left_bound, cpu_, gpu_, bw_, mem_)):
                         left_score = self.compute_layer_score(
                             self.__item["Bundle_cpus"][left_bound],
                             self.__item["Bundle_gpus"][left_bound],
                             self.__item["Bundle_bw"][left_bound],
                         )
 
-                    if (
-                        right_bound < len(self.__item["Bundle_cpus"])
-                        and self.__layer_bid_already[self.__item["job_id"]][right_bound]
-                        == False
-                        and self.__item["Bundle_gpus"][right_bound]
-                        <= self.__updated_gpu - gpu_
-                        and self.__item["Bundle_cpus"][right_bound]
-                        <= self.__updated_cpu - cpu_
-                    ):
-
+                    if (right_bound < len(self.__item["Bundle_cpus"]) and self.__can_host(right_bound, cpu_, gpu_, bw_, mem_)):
                         right_score = self.compute_layer_score(
                             self.__item["Bundle_cpus"][right_bound],
                             self.__item["Bundle_gpus"][right_bound],
@@ -375,40 +336,20 @@ class PNode:
 
                     target_layer = None
 
-                    # proceed on the leyer on the left
-                    if (left_score is not None and right_score is None) or (
-                        left_score is not None
-                        and right_score is not None
-                        and left_score >= right_score
-                    ):
+                    if (left_score is not None and right_score is None) or (left_score is not None and right_score is not None and left_score >= right_score):
                         target_layer = left_bound
-
-                        # not betting on the right bound layer, so decrease
                         right_bound -= 1
 
-                    # proceed on the layer on the right
-                    if (right_score is not None and left_score is None) or (
-                        left_score is not None
-                        and right_score is not None
-                        and left_score < right_score
-                    ):
+                    if (right_score is not None and left_score is None) or (left_score is not None and right_score is not None and left_score < right_score):
                         target_layer = right_bound
-
-                        # not betting on the right bound layer, so decrease
                         left_bound += 1
 
-                    # if there is a layer that can be bid on, bid on it
                     if target_layer is not None:
                         bid = self.__utility_function(
                             self.__updated_bw, self.__updated_cpu, self.__updated_gpu
                         )
-                        # bid -= self.__id * 0.000000001
 
-                        # if my bid is higher than the current bid, I can bid on the layer
-                        if bid > tmp_bid["bid"][target_layer] or (
-                            bid == tmp_bid["bid"][target_layer]
-                            and self.__id < tmp_bid["auction_id"][target_layer]
-                        ):
+                        if bid > tmp_bid["bid"][target_layer] or (bid == tmp_bid["bid"][target_layer] and self.__id < tmp_bid["auction_id"][target_layer]):
                             tmp_bid["bid"][target_layer] = bid
                             tmp_bid["auction_id"][target_layer] = self.__id
                             tmp_bid["timestamp"][target_layer] = bidtime
@@ -418,7 +359,8 @@ class PNode:
 
                             cpu_ += self.__item["Bundle_cpus"][target_layer]
                             gpu_ += self.__item["Bundle_gpus"][target_layer]
-                            # bw_ += self.__item['NN_data_size'][target_layer]
+                            bw_ += self.__item["Bundle_bw"][target_layer]
+                            mem_ += self.__item["Bundle_memory"][target_layer]
                         else:  # try also on the other side
                             found = False
 
@@ -441,10 +383,7 @@ class PNode:
                                 bid -= self.__id * 0.000000001
 
                                 # if my bid is higher than the current bid, I can bid on the layer
-                                if bid > tmp_bid["bid"][target_layer] or (
-                                    bid == tmp_bid["bid"][target_layer]
-                                    and self.__id < tmp_bid["auction_id"][target_layer]
-                                ):
+                                if bid > tmp_bid["bid"][target_layer] or (bid == tmp_bid["bid"][target_layer] and self.__id < tmp_bid["auction_id"][target_layer]):
                                     tmp_bid["bid"][target_layer] = bid
                                     tmp_bid["auction_id"][target_layer] = self.__id
                                     tmp_bid["timestamp"][target_layer] = bidtime
@@ -454,36 +393,30 @@ class PNode:
 
                                     cpu_ += self.__item["Bundle_cpus"][target_layer]
                                     gpu_ += self.__item["Bundle_gpus"][target_layer]
+                                    bw_ += self.__item["Bundle_bw"][target_layer]
+                                    mem_ += self.__item["Bundle_memory"][target_layer]
                                     # bw_ += self.__item['NN_data_size'][target_layer]
                                 else:
-                                    if (
-                                        Bundle_size >= self.__item["Bundle_min"]
-                                        and Bundle_size <= self.__item["Bundle_max"]
-                                    ):
+                                    if (Bundle_size >= self.__item["Bundle_min"] and Bundle_size <= self.__item["Bundle_max"]):
                                         success = True
                                     break
                             else:
-                                if (
-                                    Bundle_size >= self.__item["Bundle_min"]
-                                    and Bundle_size <= self.__item["Bundle_max"]
-                                ):
+                                if (Bundle_size >= self.__item["Bundle_min"] and Bundle_size <= self.__item["Bundle_max"]):
                                     success = True
                                 break
                     else:
-                        if (
-                            Bundle_size >= self.__item["Bundle_min"]
-                            and Bundle_size <= self.__item["Bundle_max"]
-                        ):
+                        if Bundle_size >= self.__item["Bundle_min"] and Bundle_size <= self.__item["Bundle_max"]:
                             success = True
                         break
 
                 if success:
                     self.__updated_cpu -= cpu_
                     self.__updated_gpu -= gpu_
+                    self.__updated_bw -= bw_
+                    self.__updated_memory -= mem_
 
                     with bids_lock:
-                        bids[self.__item["job_id"]
-                                    ] = copy.deepcopy(tmp_bid)
+                        bids[self.__item["job_id"]] = copy.deepcopy(tmp_bid)
 
                     for l in layers:
                         self.__layer_bid_already[self.__item["job_id"]][l] = True
@@ -501,13 +434,13 @@ class PNode:
         with bids_lock:
             tmp_local = copy.deepcopy(bids[self.__item["job_id"]])
             prev_bet = copy.deepcopy(bids[self.__item["job_id"]])
+        
         index = 0
         reset_flag = False
         reset_ids = []
         bid_time = datetime.timestamp(datetime.now())
 
         while index < self.__item["Bundle_size"]:
-
             z_kj = self.__item["auction_id"][index]
             z_ij = tmp_local["auction_id"][index]
             y_kj = self.__item["bid"][index]
@@ -936,59 +869,64 @@ class PNode:
 
         cpu = 0
         gpu = 0
-        # bw = 0
+        bw = 0
+        mem = 0
 
         first_1 = False
         first_2 = False
         for i in range(len(tmp_local["auction_id"])):
-            if (
-                tmp_local["auction_id"][i] == self.__id
-                and prev_bet["auction_id"][i] != self.__id
-            ):
+            if (tmp_local["auction_id"][i] == self.__id and prev_bet["auction_id"][i] != self.__id):
                 cpu -= self.__item["Bundle_cpus"][i]
                 gpu -= self.__item["Bundle_gpus"][i]
+                bw -= self.__item["Bundle_bw"][i]
+                mem -= self.__item["Bundle_memory"][i]
                 if not first_1:
                     first_1 = True
-            elif (
-                tmp_local["auction_id"][i] != self.__id
-                and prev_bet["auction_id"][i] == self.__id
-            ):
+            elif (tmp_local["auction_id"][i] != self.__id and prev_bet["auction_id"][i] == self.__id):
                 cpu += self.__item["Bundle_cpus"][i]
                 gpu += self.__item["Bundle_gpus"][i]
+                bw += self.__item["Bundle_bw"][i]
+                mem += self.__item["Bundle_memory"][i]
 
                 if not first_2:
                     first_2 = True
 
         self.__updated_cpu += cpu
         self.__updated_gpu += gpu
+        self.__updated_bw += bw
+        self.__updated_memory += mem
 
         with bids_lock:
             bids[self.__item["job_id"]] = copy.deepcopy(tmp_local)
 
         return rebroadcast
 
+    
     def __update_bid(self, bidfunc):
         global bids, bids_lock
         if self.__enable_logging:
             self.print_node_state("BEFORE", True)
 
         if "auction_id" in self.__item:
+            consensus = False
             with bids_lock:
                 if (bids[self.__item["job_id"]]["auction_id"] == self.__item["auction_id"]
                     and bids[self.__item["job_id"]]["bid"] == self.__item["bid"]
                     and bids[self.__item["job_id"]]["timestamp"] == self.__item["timestamp"]
                     and float("-inf") not in bids[self.__item["job_id"]]["auction_id"]):
+                    consensus = True
+            
+            if consensus:
+                if self.__enable_logging:
+                    self.print_node_state("Consensus -", True)
+                    # pass
+            else:
+                rebroadcast = self.__deconfliction()
+                success = bidfunc()
 
-                    if self.__enable_logging:
-                        self.print_node_state("Consensus -", True)
-                        # pass
-                else:
-                    rebroadcast = self.__deconfliction()
-                    success = bidfunc()
-
-                    return success or rebroadcast
+                return success or rebroadcast
         else:
-            self.__bid()
+            bidfunc()
             return True
 
     def __check_if_hosting_job(self):
@@ -1049,6 +987,8 @@ class PNode:
                             self.__init_null()
                             first_msg = True
                             self.__counter[self.__item["job_id"]] = 0
+                            if self.__item["edge_id"] == None:
+                                self.__tasks_from_clients.append(self.__item["job_id"])
                         self.__counter[self.__item["job_id"]] += 1
 
                         # differentiate bidding based on the type of the message
