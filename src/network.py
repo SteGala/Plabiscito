@@ -9,7 +9,7 @@ class Endpoint:
         self.__port = int(port)
 
     def get_url(self):
-        return f"{self.__ip}:{self.__port}"
+        return f"http://{self.__ip}:{self.__port}"
     
     def get_IP(self):
         return self.__ip

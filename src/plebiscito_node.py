@@ -56,7 +56,7 @@ class PNode:
                         self.send_response(200)
                         self.send_header("Content-type", "text/html")
                         self.end_headers()
-                        self.wfile.write(str(bids["auction_id"]).encode("utf-8"))
+                        self.wfile.write(str(bids[transaction_id]["auction_id"]).encode("utf-8"))
                     else:
                         self.send_response(404)
                         self.send_header("Content-type", "text/html")
@@ -138,6 +138,7 @@ class PNode:
         httpd.serve_forever()
 
     def __init_null(self):
+        global bids, bids_lock
         with bids_lock:
             bids[self.__item["job_id"]] = {
                 "job_id": self.__item["job_id"],
@@ -149,14 +150,14 @@ class PNode:
                 "Bundle_bw": self.__item["Bundle_bw"],
                 "bid": list(),
                 "timestamp": list(),
-                "arrival_time": datetime.now(),
+                "arrival_time": datetime.timestamp(datetime.now()),
                 "Bundle_min": self.__item["Bundle_min"],
                 "Bundle_max": self.__item["Bundle_max"],
                 "edge_id": self.__id,
                 "Bundle_size": self.__item["Bundle_size"],
                 "bid": [float("-inf") for _ in range(self.__item["Bundle_size"])],
                 "auction_id": [float("-inf") for _ in range(self.__item["Bundle_size"])],
-                "timestamp": [datetime.now() - timedelta(days=1) for _ in range(self.__item["Bundle_size"])],
+                "timestamp": [datetime.timestamp(datetime.now() - timedelta(days=1)) for _ in range(self.__item["Bundle_size"])],
             }
 
         self.__layer_bid_already[self.__item["job_id"]] = [False] * self.__item[
@@ -170,7 +171,9 @@ class PNode:
     def __forward_to_neighbohors(
         self, custom_dict=None, resend_bid=False, first_msg=False
     ):
+        global bids, bids_lock
         msg = {
+            "type": self.__item["type"],
             "job_id": self.__item["job_id"],
             "user": self.__item["user"],
             "edge_id": self.__id,
@@ -256,10 +259,11 @@ class PNode:
         pass
 
     def __bid(self):
+        global bids, bids_lock
         with bids_lock:
             tmp_bid = copy.deepcopy(bids[self.__item["job_id"]])
 
-        bidtime = datetime.now()
+        bidtime = datetime.timestamp(datetime.now())
 
         # create an array containing the indices of the layers that can be bid on
         possible_layer = []
@@ -489,6 +493,7 @@ class PNode:
         return False
 
     def __deconfliction(self):
+        global bids, bids_lock
         rebroadcast = False
         k = self.__item["edge_id"]  # sender
         i = self.__id  # receiver
@@ -499,7 +504,7 @@ class PNode:
         index = 0
         reset_flag = False
         reset_ids = []
-        bid_time = datetime.now()
+        bid_time = datetime.timestamp(datetime.now())
 
         while index < self.__item["Bundle_size"]:
 
@@ -963,6 +968,7 @@ class PNode:
         return rebroadcast
 
     def __update_bid(self, bidfunc):
+        global bids, bids_lock
         if self.__enable_logging:
             self.print_node_state("BEFORE", True)
 
@@ -986,6 +992,7 @@ class PNode:
             return True
 
     def __check_if_hosting_job(self):
+        global bids, bids_lock
         with bids_lock:
             if (
                 self.__item["job_id"] in bids
@@ -995,6 +1002,7 @@ class PNode:
             return False
 
     def __release_resources(self):
+        global bids, bids_lock
         cpu = 0
         gpu = 0
 
@@ -1013,6 +1021,7 @@ class PNode:
         self.__daemon.start()
 
     def __work(self, end_processing):
+        global bids, bids_lock
         self.already_finished = True
 
         while True:
@@ -1042,6 +1051,7 @@ class PNode:
                             self.__counter[self.__item["job_id"]] = 0
                         self.__counter[self.__item["job_id"]] += 1
 
+                        # differentiate bidding based on the type of the message
                         if self.__item["type"] == "topology":
                             success = self.__update_bid(self.__bid_topology)
                         elif self.__item["type"] == "allocate":
@@ -1083,7 +1093,7 @@ class PNode:
                     raise Empty
 
                 for i in _items:
-                    self.__q[self.__id].put(i)
+                    q[self.__id].put(i)
                 break
 
         return items
