@@ -1,5 +1,6 @@
 import json
 import requests
+from requests.exceptions import ConnectionError
 
 
 class Endpoint:
@@ -19,7 +20,18 @@ class Endpoint:
     
     def send_msg(self, msg):
         json_data = json.dumps(msg)
-        _ = requests.post(self.get_url(), data=json_data.encode('utf-8'))
+        try:
+            requests.post(self.get_url(), data=json_data.encode('utf-8'))
+            return True
+        except ConnectionError:
+            return False
+        
+    def is_active(self):
+        try:
+            requests.get(self.get_url() + "/status")
+            return True
+        except ConnectionError:
+            return False
         
     def __str__(self):
         return f"{self.__name} ({self.__ip}:{self.__port})"

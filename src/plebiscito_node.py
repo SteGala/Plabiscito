@@ -4,6 +4,7 @@ This module impelments the behavior of a node
 
 from queue import Empty
 import threading
+import time
 from src.config import Utility
 from src.network import Endpoint
 from datetime import datetime, timedelta
@@ -38,7 +39,6 @@ class PNode:
             self.send_response(200)
             self.send_header("Content-type", "text/html")
             self.end_headers()
-            self.wfile.write(b"Request received")
 
         def do_GET(self):
             global bids, bids_lock
@@ -46,12 +46,10 @@ class PNode:
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
-                self.wfile.write(b"Hello, world!")
-            elif self.path == "/about":
+            elif self.path == "/status":
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
-                self.wfile.write(b"About page")
             elif self.path.startswith("/transaction"):
                 with bids_lock:
                     if len(self.path.split("/")) != 2:
@@ -62,15 +60,14 @@ class PNode:
                             self.end_headers()
                             self.wfile.write(str(bids[transaction_id]["auction_id"]).encode("utf-8"))
                         else:
-                            print(transaction_id)
                             self.send_response(404)
                             self.send_header("Content-type", "text/html")
                             self.end_headers()
                             self.wfile.write(f"Transaction not avaiable".encode("utf-8"))
                     else:
                         ret = ""
-                        for k, v in bids.items():
-                            ret += f"Transaction ID ({k}): &emsp; {v['auction_id']}<br>"
+                        for k in bids:
+                            ret += f"Transaction ID ({k}) &emsp; winner(s): {bids[k]['auction_id']} &emsp; bid(s): {bids[k]['bid']}<br>"
                         self.send_response(200)
                         self.send_header("Content-type", "text/html")
                         self.end_headers()
@@ -89,6 +86,7 @@ class PNode:
         self.__utility = utility
         self.__enable_logging = enable_logging
         self.__neighbors_endpoint = neighbors_endpoint
+        self.__active_endpoints = {}
         self.__self_endpoint = self_endpoint
         self.__reduce_packets = reduce_packets
         self.__timeout = timeout
@@ -96,10 +94,10 @@ class PNode:
         q = queue.Queue()
 
         # TODO: update the initial values
-        self.__initial_bw = 3
-        self.__initial_cpu = 3
-        self.__initial_gpu = 3
-        self.__initial_memory = 3
+        self.__initial_bw = 3000
+        self.__initial_cpu = 3000
+        self.__initial_gpu = 3000
+        self.__initial_memory = 3000
         self.__updated_bw = self.__initial_bw
         self.__updated_gpu = self.__initial_gpu
         self.__updated_cpu = self.__initial_cpu
@@ -143,7 +141,12 @@ class PNode:
     def __init_null(self):
         global bids, bids_lock
 
-        print(f"First message for transaction {self.__item['job_id']}")
+        #print(f"First message for transaction {self.__item['job_id']}")
+        if self.__item["job_id"] not in self.__active_endpoints:
+            self.__active_endpoints[self.__item["job_id"]] = []
+            for e in self.__neighbors_endpoint:
+                if e.is_active():
+                    self.__active_endpoints[self.__item["job_id"]].append(e)
 
         with bids_lock:
             bids[self.__item["job_id"]] = {
@@ -165,19 +168,36 @@ class PNode:
                 "auction_id": [float("-inf") for _ in range(self.__item["Bundle_size"])],
                 "timestamp": [datetime.timestamp(datetime.now() - timedelta(days=1)) for _ in range(self.__item["Bundle_size"])],
             }
-        #     if "Submitter_truth" in self.__item:
-        #         bids[self.__item["job_id"]]["Submitter_truth"] = self.__item["Submitter_truth"]
-        #     else:
-        #         bids[self.__item["job_id"]]["Submitter_truth"] = None
 
-        # self.__layer_bid_already[self.__item["job_id"]] = [False] * self.__item["Bundle_size"]
+        self.__layer_bid_already[self.__item["job_id"]] = [False] * self.__item["Bundle_size"]
 
     def __utility_function(self, avail_bw, avail_cpu, avail_gpu):
         if self.__utility == Utility.LGF:
             return avail_gpu
+        
+    def __invalidate_bid(self, msg):
+        global bids, bids_lock
+        
+        with bids_lock:
+            new_bid = [1000000000 for _ in range(self.__item["Bundle_size"])]
+            new_auction = [-1000000000 for _ in range(self.__item["Bundle_size"])]
+            new_timestamp = [datetime.timestamp(datetime.now() + timedelta(weeks=25)) for _ in range(self.__item["Bundle_size"])]
+            
+            bids[self.__item["job_id"]]["bid"] = new_bid
+            bids[self.__item["job_id"]]["auction_id"] = new_auction
+            bids[self.__item["job_id"]]["timestamp"] = new_timestamp
+
+            msg["bid"] = new_bid
+            msg["auction_id"] = new_auction
+            msg["timestamp"] = new_timestamp
+
+            for e in self.__active_endpoints[self.__item["job_id"]]:
+                _ = e.send_msg(msg)
+
 
     def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock
+
         msg = {
             "type": self.__item["type"],
             "job_id": self.__item["job_id"],
@@ -191,19 +211,17 @@ class PNode:
             "Bundle_min": self.__item["Bundle_min"],
             "Bundle_max": self.__item["Bundle_max"],
         }
+
         if first_msg:
-            for e in self.__neighbors_endpoint:
-                e.send_msg(msg)
+            for e in self.__active_endpoints[self.__item["job_id"]]:
+                _ = e.send_msg(msg)
             return
 
         if custom_dict == None and not resend_bid:
             with bids_lock:
-                msg["auction_id"] = copy.deepcopy(
-                    bids[self.__item["job_id"]]["auction_id"])
-                msg["bid"] = copy.deepcopy(
-                    bids[self.__item["job_id"]]["bid"])
-                msg["timestamp"] = copy.deepcopy(
-                    bids[self.__item["job_id"]]["timestamp"])
+                msg["auction_id"] = copy.deepcopy(bids[self.__item["job_id"]]["auction_id"])
+                msg["bid"] = copy.deepcopy(bids[self.__item["job_id"]]["bid"])
+                msg["timestamp"] = copy.deepcopy(bids[self.__item["job_id"]]["timestamp"])
         elif custom_dict != None and not resend_bid:
             msg["auction_id"] = copy.deepcopy(custom_dict["auction_id"])
             msg["bid"] = copy.deepcopy(custom_dict["bid"])
@@ -218,8 +236,12 @@ class PNode:
         if self.__enable_logging:
             self.print_node_state("FORWARD", True)
         
-        for e in self.__neighbors_endpoint:
-            e.send_msg(msg)
+        for e in self.__active_endpoints[self.__item["job_id"]]:
+            success = e.send_msg(msg)
+            if not success:
+                self.__invalidate_bid(msg)
+                break
+
         return
 
     def print_node_state(self, msg, bid=False, type="debug"):
