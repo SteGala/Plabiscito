@@ -3,6 +3,7 @@ This module impelments the behavior of a node
 """
 
 from queue import Empty
+import random
 import threading
 import time
 from src.config import Utility
@@ -110,8 +111,7 @@ class PNode:
         self.__layer_bid_already = {}
         self.__tasks_from_clients = []
 
-        self.__server_thread = threading.Thread(target=self.__run_http_server, daemon=True)
-        self.__server_thread.start()
+        self.__run_http_server()
 
     def get_avail_gpu(self):
         return self.__updated_gpu
@@ -135,8 +135,8 @@ class PNode:
             server_address = (self.__self_endpoint.get_IP(), self.__self_endpoint.get_port())
 
         # Pass the shared queue to the HTTP server
-        httpd = HTTPServer(server_address, PNode.MyHandler)
-        httpd.serve_forever()
+        self.__httpd = HTTPServer(server_address, PNode.MyHandler)
+        threading.Thread(target=self.__httpd.serve_forever).start()
 
     def __init_null(self):
         global bids, bids_lock
@@ -981,8 +981,10 @@ class PNode:
         self.__daemon.start()
 
     def __work(self, end_processing):
-        global bids, bids_lock
-        self.already_finished = True
+        global bids, bids_lock 
+
+        failure = False
+        failure_duration = 0       
 
         while True:
             try:
@@ -993,6 +995,16 @@ class PNode:
 
                 for it in items:
                     self.__item = it
+
+                    if not failure:
+                        r = random.randrange(0, 100)
+                        if r == 56:
+                            failure = True
+                            failure_duration = random.randrange(1, 10)
+                            self.__httpd.shutdown()
+
+                    if failure:
+                        continue
 
                     if self.__item["type"] == "unallocate":
                         if self.__check_if_hosting_job():
@@ -1027,6 +1039,11 @@ class PNode:
                     self.__forward_to_neighbohors(first_msg=True)
 
             except Empty:
+                if failure:
+                    failure_duration -= 1
+                    if failure_duration == 0:
+                        failure = False
+                        self.__run_http_server()
                 if end_processing is not None and end_processing.is_set():
                     return
 
@@ -1039,7 +1056,6 @@ class PNode:
         while True:
             try:
                 it = q.get(timeout=self.__timeout)
-                self.already_finished = False
                 if first:
                     first = False
                     job_id = it["job_id"]
