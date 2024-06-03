@@ -50,6 +50,6 @@ class PClient:
         return job_id
 
 if __name__ == '__main__':
-    client = PClient("http://localhost", 6000, "client1")
+    client = PClient("http://localhost", 6001, "client1")
     client.request_allocation(cpus=[1], gpus=[1], bw=[1], mem=[1], duration=5)
         

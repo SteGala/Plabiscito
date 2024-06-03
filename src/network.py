@@ -40,10 +40,13 @@ class Endpoint:
             return False
         
     def request_path(self, msg):
-        resp = requests.post(self.get_url() + "/path", data=msg.encode('utf-8'))
-        if resp.status_code == 200:
-            return json.loads(resp.text, object_hook=custom_decoder)
-        else:
+        try:
+            resp = requests.post(self.get_url() + "/path", data=msg, timeout=5)
+            if resp.status_code == 200:
+                return json.loads(resp.text)
+            else:
+                return None
+        except ConnectionError as e:
             return None
         
     def is_active(self):
