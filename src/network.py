@@ -2,6 +2,16 @@ import json
 import requests
 from requests.exceptions import ConnectionError
 
+class CustomEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Endpoint):
+            return {'name': obj.get_name(), 'ip': obj.get_IP(), 'port': obj.get_port()}
+        return super().default(obj)
+    
+def custom_decoder(dct):
+    if 'name' in dct and 'ip' in dct and 'port' in dct:
+        return Endpoint(dct['name'], dct['ip'], dct['port'])
+    return dct
 
 class Endpoint:
     def __init__(self, name, ip, port):
@@ -14,6 +24,9 @@ class Endpoint:
     
     def get_IP(self):
         return self.__ip
+        
+    def get_name(self):
+        return self.__name
     
     def get_port(self):
         return self.__port
@@ -25,6 +38,13 @@ class Endpoint:
             return True
         except ConnectionError:
             return False
+        
+    def request_path(self, msg):
+        resp = requests.post(self.get_url() + "/path", data=msg.encode('utf-8'))
+        if resp.status_code == 200:
+            return json.loads(resp.text, object_hook=custom_decoder)
+        else:
+            return None
         
     def is_active(self):
         try:

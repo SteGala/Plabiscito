@@ -6,14 +6,17 @@ from queue import Empty
 import random
 import threading
 import time
+
+import requests
 from src.config import Utility
-from src.network import Endpoint
+from src.network import Endpoint, CustomEncoder, custom_decoder
 from datetime import datetime, timedelta
 import copy
 import logging
 import queue
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
+import pickle
 
 TRACE = 5
 
@@ -24,6 +27,9 @@ class InternalError(Exception):
 bids = None
 bids_lock = None
 q = None
+neighbors_endpoint = None
+id_node = None
+self_endpoint = None
 
 class PNode:
     class MyHandler(BaseHTTPRequestHandler):
@@ -31,15 +37,45 @@ class PNode:
             return
         
         def do_POST(self):
-            global q
-            content_length = int(self.headers["Content-Length"])
-            post_data = self.rfile.read(content_length).decode("utf-8")
-            q.put(json.loads(post_data))
+            global neighbors_endpoint, id_node, self_endpoint
+            if self.path == "/path":
+                post_data = self.rfile.read(content_length).decode("utf-8")
+                ep = json.loads(post_data, object_hook=custom_decoder)
+                
+                if ep["dst"] == id_node:
+                    serialized_data = json.dumps([self_endpoint], cls=CustomEncoder).encode('utf-8')
+                    self.wfile.write(serialized_data)
+                    self.send_response(200)
+                    self.send_header("Content-type", "text/html")
+                    self.end_headers()
+                else:
+                    payload = {}
+                    payload["dst"] = ep["dst"]
+                    payload["visited"] = copy.deepcopy(ep["visited"])
+                    payload["visited"].append(self_endpoint)
+                    for e in neighbors_endpoint:
+                        if e not in ep["visited"]:
+                            serialized_data = json.dumps(payload, cls=CustomEncoder).encode('utf-8')
+                            res = e.request_path(serialized_data)
+                            if res is not None:
+                                serialized_data = json.dumps(res.append(self_endpoint), cls=CustomEncoder).encode('utf-8')
+                                self.send_response(200)
+                                self.send_header("Content-type", "text/html")
+                                self.end_headers()
+                                
+                    self.send_response(404)
+                    self.send_header("Content-type", "text/html")
+                    self.end_headers()
+            else:
+                global q
+                content_length = int(self.headers["Content-Length"])
+                post_data = self.rfile.read(content_length).decode("utf-8")
+                q.put(json.loads(post_data))
 
-            # Send an HTTP response
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
+                # Send an HTTP response
+                self.send_response(200)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
 
         def do_GET(self):
             global bids, bids_lock
@@ -80,17 +116,19 @@ class PNode:
                 self.end_headers()
                 self.wfile.write(b"Resource not found")
 
-    def __init__(self, id, utility=Utility.LGF, self_endpoint=Endpoint("e", "localhost", "9191"), neighbors_endpoint=[], enable_logging=False, reduce_packets=False, timeout=0.05):
-        global bids, bids_lock, q
+    def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", "localhost", "9191"), neighbors_ep=[], enable_logging=False, reduce_packets=False, queue_timeout=0.05, allocation_timeout=2):
+        global bids, bids_lock, q, neighbors_endpoint, id_node, self_endpoint
 
         self.__id = id  # unique edge node id
+        id_node = id
         self.__utility = utility
         self.__enable_logging = enable_logging
-        self.__neighbors_endpoint = neighbors_endpoint
+        self_endpoint = self_ep
+        neighbors_endpoint = neighbors_ep
         self.__active_endpoints = {}
-        self.__self_endpoint = self_endpoint
         self.__reduce_packets = reduce_packets
-        self.__timeout = timeout
+        self.__queue_timeout = queue_timeout
+        self.__allocation_timeout = allocation_timeout
 
         q = queue.Queue()
 
@@ -110,6 +148,15 @@ class PNode:
         bids = {}
         self.__layer_bid_already = {}
         self.__tasks_from_clients = []
+        self.__last_msg_lock = threading.Lock()
+        self.__last_msg = {}
+        
+        # tmp = {}
+        # tmp["dst"] = self.__self_endpoint
+        # tmp["visited"] = neighbors_endpoint
+        # serialized_data = json.dumps(tmp, cls=CustomEncoder).encode('utf-8')
+        # ep = json.loads(serialized_data, object_hook=custom_decoder)
+        # print(ep)
 
         self.__run_http_server()
 
@@ -129,22 +176,23 @@ class PNode:
         return (self.__updated_cpu, self.__updated_gpu, self.__updated_memory, self.__updated_bw)
 
     def __run_http_server(self):
-        if self.__self_endpoint is None:
+        global self_endpoint
+        if self_endpoint is None:
             server_address = ("", 8000)  # Listen on all interfaces, port 8000
         else:
-            server_address = (self.__self_endpoint.get_IP(), self.__self_endpoint.get_port())
+            server_address = (self_endpoint.get_IP(), self_endpoint.get_port())
 
         # Pass the shared queue to the HTTP server
         self.__httpd = HTTPServer(server_address, PNode.MyHandler)
         threading.Thread(target=self.__httpd.serve_forever).start()
 
     def __init_null(self):
-        global bids, bids_lock
+        global bids, bids_lock, neighbors_endpoint
 
         #print(f"First message for transaction {self.__item['job_id']}")
         if self.__item["job_id"] not in self.__active_endpoints:
             self.__active_endpoints[self.__item["job_id"]] = []
-            for e in self.__neighbors_endpoint:
+            for e in neighbors_endpoint:
                 if e.is_active():
                     self.__active_endpoints[self.__item["job_id"]].append(e)
 
@@ -239,8 +287,9 @@ class PNode:
         for e in self.__active_endpoints[self.__item["job_id"]]:
             success = e.send_msg(msg)
             if not success:
-                self.__invalidate_bid(msg)
-                break
+                # self.__invalidate_bid(msg)
+                # break
+                pass
 
         return
 
@@ -979,12 +1028,42 @@ class PNode:
         self.__daemon = threading.Thread(
             target=self.__work, args=(stop_event,))
         self.__daemon.start()
+        
+    def __check_allocation(self, job_id):
+        global bids, bids_lock, neighbors_endpoint
+        while True:
+            with self.__last_msg_lock:
+                last_msg_time = self.__last_msg[job_id]
+                curtime = time.time()
+                if curtime - last_msg_time > self.__allocation_timeout:
+                    with bids_lock:
+                        if self.__id in bids[job_id]["auction_id"]:
+                            print("I won the bid")
+                            # TODO: do something here
+                            return
 
+                    tmp = {}
+                    with bids_lock:
+                        tmp["dst"] = bids[job_id]["auction_id"]
+                        
+                    for ep in neighbors_endpoint:
+                        tmp["visited"] = [ep]
+                        serialized_data = json.dumps(tmp, cls=CustomEncoder).encode('utf-8')
+                        res = ep.request_path(serialized_data)
+                        if res is None:
+                            print(f"No path from {ep}")
+                        else:
+                            print(res)
+                            break
+                    break
+                else:
+                    time.sleep(self.__allocation_timeout - (curtime - last_msg_time))
+                
     def __work(self, end_processing):
         global bids, bids_lock 
 
-        failure = False
-        failure_duration = 0       
+        # failure = False
+        # failure_duration = 0       
 
         while True:
             try:
@@ -996,15 +1075,15 @@ class PNode:
                 for it in items:
                     self.__item = it
 
-                    if not failure:
-                        r = random.randrange(0, 100)
-                        if r == 56:
-                            failure = True
-                            failure_duration = random.randrange(1, 10)
-                            self.__httpd.shutdown()
+                    # if not failure:
+                    #     r = random.randrange(0, 100)
+                    #     if r == 56:
+                    #         failure = True
+                    #         failure_duration = random.randrange(1, 10)
+                    #         self.__httpd.shutdown()
 
-                    if failure:
-                        continue
+                    # if failure:
+                    #     continue
 
                     if self.__item["type"] == "unallocate":
                         if self.__check_if_hosting_job():
@@ -1016,6 +1095,8 @@ class PNode:
                                 del self.__counter[self.__item["job_id"]]
                     else:
                         first_msg = False
+                        with self.__last_msg_lock:
+                            self.__last_msg[self.__item["job_id"]] = time.time()
 
                         if self.__item["job_id"] not in self.__counter:
                             self.__init_null()
@@ -1023,6 +1104,7 @@ class PNode:
                             self.__counter[self.__item["job_id"]] = 0
                             if self.__item["edge_id"] == None:
                                 self.__tasks_from_clients.append(self.__item["job_id"])
+                                threading.Thread(target=self.__check_allocation, args=(self.__item["job_id"],)).start()
                         self.__counter[self.__item["job_id"]] += 1
 
                         # differentiate bidding based on the type of the message
@@ -1039,11 +1121,11 @@ class PNode:
                     self.__forward_to_neighbohors(first_msg=True)
 
             except Empty:
-                if failure:
-                    failure_duration -= 1
-                    if failure_duration == 0:
-                        failure = False
-                        self.__run_http_server()
+                # if failure:
+                #     failure_duration -= 1
+                #     if failure_duration == 0:
+                #         failure = False
+                #         self.__run_http_server()
                 if end_processing is not None and end_processing.is_set():
                     return
 
@@ -1055,7 +1137,7 @@ class PNode:
         _items = []
         while True:
             try:
-                it = q.get(timeout=self.__timeout)
+                it = q.get(timeout=self.__queue_timeout)
                 if first:
                     first = False
                     job_id = it["job_id"]
