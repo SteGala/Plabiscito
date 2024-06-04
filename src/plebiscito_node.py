@@ -4,6 +4,9 @@ This module impelments the behavior of a node
 
 from queue import Empty
 import random
+import socket
+import subprocess
+import sys
 import threading
 import time
 
@@ -29,14 +32,20 @@ q = None
 neighbors_endpoint = None
 id_node = None
 self_endpoint = None
+proxy_port = None
+hosted_jobs = []
+hosted_jobs_lock = threading.Lock()
+allocated_jobs = []
+allocated_jobs_lock = threading.Lock()
 
 class PNode:
     class MyHandler(BaseHTTPRequestHandler):
-        # def log_message(self, format, *args):
-        #     return
+        def log_message(self, format, *args):
+            return
         
         def do_POST(self):
             neighbors_endpoint, id_node, self_endpoint
+            global proxy_port
             if self.path == "/path":
                 post_data = self.rfile.read(int(self.headers["Content-Length"])).decode("utf-8")
                 ep = json.loads(post_data, object_hook=custom_decoder)
@@ -45,10 +54,16 @@ class PNode:
                     self.send_response(200)
                     self.send_header("Content-type", "text/html")
                     self.end_headers()
-                    self.wfile.write("12".encode("utf-8"))
+                    self.wfile.write(str(proxy_port).encode("utf-8"))
+                    threading.Thread(target=self.start_socket, args=(self_endpoint.get_IP(), proxy_port, ep["job_id"])).start()
+                    print(f"Starting socket on {self_endpoint.get_IP()}:{proxy_port}")
+                    proxy_port += 1
+                    if proxy_port - self_endpoint.get_port() > 9:
+                        proxy_port = self_endpoint.get_port() + 1
                 else:
                     payload = {}
                     payload["dst"] = ep["dst"]
+                    payload["job_id"] = ep["job_id"]
                     payload["visited"] = copy.deepcopy(ep["visited"])
                     payload["visited"].append(self_endpoint)
                     for e in neighbors_endpoint:
@@ -59,7 +74,16 @@ class PNode:
                                 self.send_response(200)
                                 self.send_header("Content-type", "text/html")
                                 self.end_headers()
-                                self.wfile.write("12".encode("utf-8"))
+                                self.wfile.write(str(proxy_port).encode("utf-8"))
+
+                                # _ = subprocess.run([sys.executable, 'src/tcpproxy/tcpproxy.py'] + ["-li", str(self_endpoint.get_IP()), "-lp", str(proxy_port), "-ti", str(e.get_IP()), "-tp", str(res)])
+                                _ = subprocess.Popen([sys.executable, 'src/tcpproxy/tcpproxy.py', "-li", str(self_endpoint.get_IP()), "-lp", str(proxy_port), "-ti", str(e.get_IP()), "-tp", str(res)])
+
+                                print(f"Starting proxy on {self_endpoint.get_IP()}:{proxy_port} -> {e.get_IP()}:{res}")
+                                
+                                proxy_port += 1
+                                if proxy_port - self_endpoint.get_port() > 9:
+                                    proxy_port = self_endpoint.get_port() + 1
                                 return
                                 
                     self.send_response(404)
@@ -85,6 +109,18 @@ class PNode:
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
                 self.end_headers()
+            elif self.path == "/allocated_jobs":
+                self.send_response(200)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
+                with allocated_jobs_lock:
+                    self.wfile.write(str(allocated_jobs).encode("utf-8"))
+            elif self.path == "/hosted_jobs":
+                self.send_response(200)
+                self.send_header("Content-type", "text/html")
+                self.end_headers()
+                with hosted_jobs_lock:
+                    self.wfile.write(str(hosted_jobs).encode("utf-8"))
             elif self.path.startswith("/transaction"):
                 with bids_lock:
                     if len(self.path.split("/")) != 2:
@@ -114,8 +150,24 @@ class PNode:
                 self.end_headers()
                 self.wfile.write(b"Resource not found")
 
+        def start_socket(self, ip, port, job_id):
+            global hosted_jobs, hosted_jobs_lock
+            try:
+                server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                server_socket.bind((ip, port))
+                server_socket.settimeout(5)
+                server_socket.listen(5)
+
+                server_socket.accept()
+                print(f"Accepted connection on {ip}:{port}")
+                with hosted_jobs_lock:
+                    hosted_jobs.append(job_id)
+            except TimeoutError:
+                print(f"Exceeded timeout for job {job_id}")
+
+
     def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", "localhost", "9191"), neighbors_ep=[], enable_logging=False, reduce_packets=False, queue_timeout=0.05, allocation_timeout=5):
-        global bids, bids_lock, q, neighbors_endpoint, id_node, self_endpoint
+        global bids, bids_lock, q, neighbors_endpoint, id_node, self_endpoint, proxy_port
 
         self.__id = id  # unique edge node id
         id_node = id
@@ -123,7 +175,8 @@ class PNode:
         self.__enable_logging = enable_logging
         self_endpoint = self_ep
         neighbors_endpoint = neighbors_ep
-        self.__active_endpoints = {}
+        proxy_port = self_ep.get_port() + 1
+        # self.__active_endpoints = {}
         self.__reduce_packets = reduce_packets
         self.__queue_timeout = queue_timeout
         self.__allocation_timeout = allocation_timeout
@@ -1028,7 +1081,8 @@ class PNode:
         self.__daemon.start()
         
     def __check_allocation(self, job_id):
-        found = False
+        global allocated_jobs, allocated_jobs_lock
+
         while True:
             need_to_sleep = False
             sleep_time = 0
@@ -1045,30 +1099,39 @@ class PNode:
                 with bids_lock:
                     if self.__id in bids[job_id]["auction_id"]:
                         print(f"I won the bid for {job_id}: {bids[job_id]['auction_id']} with bid {bids[job_id]['bid']}")
-                        # TODO: do something here
-                        #print(bids)
+                        with allocated_jobs_lock:
+                            allocated_jobs.append(job_id)
                         return
 
                 tmp = {}
                 with bids_lock:
                     tmp["dst"] = bids[job_id]["auction_id"]
+
+                tmp["visited"] = [self_endpoint]
+                tmp["job_id"] = job_id
                     
                 for ep in neighbors_endpoint:
-                    tmp["visited"] = [self_endpoint]
                     serialized_data = json.dumps(tmp, cls=CustomEncoder).encode('utf-8')
                     res = ep.request_path(serialized_data)
                     if res is None:
                         print(f"No path from {ep}")
                     else:
-                        found = True
-                        break
+                        print(f"Connecting to {tmp['dst']} through {ep.get_IP()}:{res}", flush=True)
+                        time.sleep(0.5)
+                        sock_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        try:
+                            sock_client.connect((ep.get_IP(), res))
+                            print(f"Connected to {tmp['dst']}")
+                            with allocated_jobs_lock:
+                                allocated_jobs.append(job_id)
+                        except Exception:
+                            print(f"Failed to reach the endpoint {tmp['dst']}")   
+                        finally: 
+                            break
                 break
                 
     def __work(self, end_processing):
-        global bids, bids_lock 
-
-        # failure = False
-        # failure_duration = 0       
+        global bids, bids_lock      
 
         while True:
             try:
@@ -1079,16 +1142,6 @@ class PNode:
 
                 for it in items:
                     self.__item = it
-
-                    # if not failure:
-                    #     r = random.randrange(0, 100)
-                    #     if r == 56:
-                    #         failure = True
-                    #         failure_duration = random.randrange(1, 10)
-                    #         self.__httpd.shutdown()
-
-                    # if failure:
-                    #     continue
 
                     if self.__item["type"] == "unallocate":
                         if self.__check_if_hosting_job():
@@ -1126,17 +1179,10 @@ class PNode:
                     self.__forward_to_neighbohors(first_msg=True)
 
             except Empty:            
-
-                # if failure:
-                #     failure_duration -= 1
-                #     if failure_duration == 0:
-                #         failure = False
-                #         self.__run_http_server()
                 if end_processing is not None and end_processing.is_set():
                     return
 
     def __extract_all_job_msg(self):
-        # global q
         first = True
         job_id = None
         items = []
