@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: Plebiscito
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: Plebiscito
+  template:
+    metadata:
+      labels:
+        app: Plebiscito
+    spec:
+      serviceAccountName: plebiscito-service-account
+      containers:
+      - name: Plebiscito
+        image: python:3.9
+        command: ["python", "/app/create_service.py"]

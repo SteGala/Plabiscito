@@ -11,8 +11,9 @@ import threading
 import time
 
 import requests
-from src.config import Utility
+from src.config import Utility, Environment
 from src.network import Endpoint, CustomEncoder, custom_decoder
+from src.kubernetes import KubernetesClient
 from datetime import datetime, timedelta
 import copy
 import logging
@@ -37,11 +38,24 @@ hosted_jobs = []
 hosted_jobs_lock = threading.Lock()
 allocated_jobs = []
 allocated_jobs_lock = threading.Lock()
+environment = None
+kubernetes_client = None
 
 class PNode:
     class MyHandler(BaseHTTPRequestHandler):
         def log_message(self, format, *args):
             return
+        
+        def run_listening_socket(self, ep):
+            threading.Thread(target=self.start_socket, args=(self_endpoint.get_IP(), proxy_port, ep["job_id"])).start()
+            print(f"Starting socket on {self_endpoint.get_IP()}:{proxy_port}")
+            if environment == Environment.KUBERNETES:
+                kubernetes_client.create_service(proxy_port)
+                
+        def run_proxy(self, e, port):
+            if environment == Environment.BARE_METAL:
+                _ = subprocess.Popen([sys.executable, 'src/tcpproxy/tcpproxy.py', "-li", str(self_endpoint.get_IP()), "-lp", str(proxy_port), "-ti", str(e.get_IP()), "-tp", str(port)])
+                print(f"Starting proxy on {self_endpoint.get_IP()}:{proxy_port} -> {e.get_IP()}:{port}")
         
         def do_POST(self):
             neighbors_endpoint, id_node, self_endpoint
@@ -55,8 +69,9 @@ class PNode:
                     self.send_header("Content-type", "text/html")
                     self.end_headers()
                     self.wfile.write(str(proxy_port).encode("utf-8"))
-                    threading.Thread(target=self.start_socket, args=(self_endpoint.get_IP(), proxy_port, ep["job_id"])).start()
-                    print(f"Starting socket on {self_endpoint.get_IP()}:{proxy_port}")
+                    
+                    self.run_listening_socket(ep)
+                    
                     proxy_port += 1
                     if proxy_port - self_endpoint.get_port() > 9:
                         proxy_port = self_endpoint.get_port() + 1
@@ -76,10 +91,7 @@ class PNode:
                                 self.end_headers()
                                 self.wfile.write(str(proxy_port).encode("utf-8"))
 
-                                # _ = subprocess.run([sys.executable, 'src/tcpproxy/tcpproxy.py'] + ["-li", str(self_endpoint.get_IP()), "-lp", str(proxy_port), "-ti", str(e.get_IP()), "-tp", str(res)])
-                                _ = subprocess.Popen([sys.executable, 'src/tcpproxy/tcpproxy.py', "-li", str(self_endpoint.get_IP()), "-lp", str(proxy_port), "-ti", str(e.get_IP()), "-tp", str(res)])
-
-                                print(f"Starting proxy on {self_endpoint.get_IP()}:{proxy_port} -> {e.get_IP()}:{res}")
+                                self.run_proxy(e, res)
                                 
                                 proxy_port += 1
                                 if proxy_port - self_endpoint.get_port() > 9:
@@ -166,8 +178,8 @@ class PNode:
                 print(f"Exceeded timeout for job {job_id}")
 
 
-    def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", "localhost", "9191"), neighbors_ep=[], enable_logging=False, reduce_packets=False, queue_timeout=0.05, allocation_timeout=5):
-        global bids, bids_lock, q, neighbors_endpoint, id_node, self_endpoint, proxy_port
+    def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", "localhost", "9191"), neighbors_ep=[], enable_logging=False, reduce_packets=False, queue_timeout=0.05, allocation_timeout=5, env=Environment.BARE_METAL):
+        global bids, bids_lock, q, neighbors_endpoint, id_node, self_endpoint, proxy_port, environment, kubernetes_client
 
         self.__id = id  # unique edge node id
         id_node = id
@@ -182,6 +194,9 @@ class PNode:
         self.__allocation_timeout = allocation_timeout
 
         q = queue.Queue()
+        environment = env
+        if env == Environment.KUBERNETES:
+            kubernetes_client = KubernetesClient()
 
         # TODO: update the initial values
         self.__initial_bw = 3000
@@ -1079,6 +1094,7 @@ class PNode:
         self.__daemon = threading.Thread(
             target=self.__work, args=(stop_event,))
         self.__daemon.start()
+        self.__daemon.join()
         
     def __check_allocation(self, job_id):
         global allocated_jobs, allocated_jobs_lock

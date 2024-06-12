@@ -12,3 +12,7 @@ class DebugLevel(Enum):
 class SchedulingAlgorithm(Enum):
     FIFO = 1
     SDF = 2 # shortest duration first
+    
+class Environment(Enum):
+    BARE_METAL = 1
+    KUBERNETES = 2
