@@ -13,9 +13,21 @@ class PClient:
         self.__client_id = client_id
 
     def request_topology(self, timeout=2):
-        msg = {}
-        msg["type"] = "topology"
-        _ = requests.post(self.get_url(), data=msg)
+        timestamp_str = datetime.now().isoformat() 
+        hash_object = hashlib.sha256(timestamp_str.encode('utf-8'))
+        hash_hex = hash_object.hexdigest()
+        job_id = hash_hex[:10]
+        print(f"Job ID: {job_id}")
+
+        msg = {
+            "type": "topology",
+            "job_id": job_id,
+            "user": self.__client_id,
+            "duration": 0,
+            "edge_id": None,
+        }
+        json_data = json.dumps(msg)
+        _ = requests.post(self.__host + ":" + str(self.__port), data=json_data.encode('utf-8'))
 
     def request_allocation(self, cpus=[], gpus=[], bw=[], mem=[], min_bundle=0, max_bundle=10000, duration=1, timeout=2):       
         if not (len(cpus) == len(gpus) == len(bw) == len(mem)):
@@ -50,6 +62,7 @@ class PClient:
         return job_id
 
 if __name__ == '__main__':
-    client = PClient("http://localhost", 6020, "client1")
-    client.request_allocation(cpus=[1], gpus=[1], bw=[1], mem=[1], duration=5)
+    client = PClient("http://localhost", 7000, "client1")
+    # client.request_allocation(cpus=[1], gpus=[1], bw=[1], mem=[1], duration=5)
+    client.request_topology()
         

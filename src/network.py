@@ -18,6 +18,7 @@ class Endpoint:
         self.__name = name
         self.__ip = ip
         self.__port = int(port)
+        self.__active = True
 
     def get_url(self):
         return f"http://{self.__ip}:{self.__port}"
@@ -37,6 +38,7 @@ class Endpoint:
             requests.post(self.get_url(), data=json_data.encode('utf-8'))
             return True
         except ConnectionError:
+            self.__active = False
             return False
         
     def request_path(self, msg):
@@ -47,7 +49,11 @@ class Endpoint:
             else:
                 return None
         except ConnectionError as e:
+            self.__active = False
             return None
+        
+    def was_active(self):
+        return self.__active
         
     def is_active(self):
         try:
