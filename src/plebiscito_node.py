@@ -260,7 +260,7 @@ class PNode:
                 print(f"Exceeded timeout for job {job_id}")
 
 
-    def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", "localhost", "9191"), neighbors_ep=[], reduce_packets=False, queue_timeout=0.05, allocation_timeout=5, env=Environment.BARE_METAL, log_level=logging.DEBUG):
+    def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", 1, "localhost", "9191"), neighbors_ep=[], reduce_packets=False, queue_timeout=0.05, allocation_timeout=5, env=Environment.BARE_METAL, log_level=logging.DEBUG):
         global bids, bids_lock, q, neighbors_endpoint, id_node, self_endpoint, proxy_port, environment, kubernetes_client
 
         self.__logger = logging.getLogger('Plebiscito')
@@ -490,7 +490,7 @@ class PNode:
                 n = []
                 for e in neighbors_endpoint:
                     if e.was_active():
-                       n.append(e.get_name()) 
+                       n.append(e.get_node_name()) 
                 
                 bids[self.__item["job_id"]]["Data"][int(id_node)] = n
                 bids[self.__item["job_id"]]["bid"][int(id_node)] = 1
@@ -600,7 +600,7 @@ class PNode:
 
                     if target_layer is not None:
                         bid = self.__utility_function(
-                            self.__updated_bw, self.__updated_cpu, self.__updated_gpu
+                            self.__updated_bw-bw_, self.__updated_cpu-cpu_, self.__updated_gpu-gpu_
                         )
 
                         if bid > tmp_bid["bid"][target_layer] or (bid == tmp_bid["bid"][target_layer] and self.__id < tmp_bid["auction_id"][target_layer]):
@@ -630,9 +630,9 @@ class PNode:
 
                             if found:
                                 bid = self.__utility_function(
-                                    self.__updated_bw,
-                                    self.__updated_cpu,
-                                    self.__updated_gpu,
+                                    self.__updated_bw-bw_,
+                                    self.__updated_cpu-cpu_,
+                                    self.__updated_gpu-gpu_
                                 )
                                 bid -= self.__id * 0.000000001
 
@@ -1097,12 +1097,14 @@ class PNode:
                 nodes.append(self_endpoint.get_node_name())
             else:
                 for ep in neighbors_endpoint:
-                    if ep.get_node_id() == b_id:
+                    #print(ep.get_node_id(), b_id)
+                    if int(ep.get_node_id()) == int(b_id):
                         nodes.append(ep.get_node_name())
                         break
         
+        print(f"Mapping of {bids[job_id]['auction_id']} --> {nodes}")
         kubernetes_client.deploy_book_application(nodes)
-        
+
     def __check_allocation(self, job_id):
         global allocated_jobs, allocated_jobs_lock
 
@@ -1122,6 +1124,7 @@ class PNode:
                 if float("-inf") in bids[job_id]["auction_id"]:
                     print(f"Couldn't find an allocation for job {job_id}")
                 else:
+                    print(f"Allocating job {job_id}. Auction id: {bids[job_id]['auction_id']}")
                     self.__deploy_application(job_id)
                     
                 # with bids_lock:
