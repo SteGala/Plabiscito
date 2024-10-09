@@ -1090,6 +1090,19 @@ class PNode:
         self.__daemon.start()
         self.__daemon.join()
         
+    def __deploy_application(self, job_id):
+        nodes = []
+        for b_id in bids[job_id]["auction_id"]:
+            if b_id == self.__id:
+                nodes.append(self_endpoint.get_node_name())
+            else:
+                for ep in neighbors_endpoint:
+                    if ep.get_node_id() == b_id:
+                        nodes.append(ep.get_node_name())
+                        break
+        
+        kubernetes_client.deploy_book_application(nodes)
+        
     def __check_allocation(self, job_id):
         global allocated_jobs, allocated_jobs_lock
 
@@ -1106,38 +1119,43 @@ class PNode:
             if need_to_sleep:
                 time.sleep(sleep_time)
             else:
-                with bids_lock:
-                    if self.__id in bids[job_id]["auction_id"]:
-                        print(f"I won the bid for {job_id}: {bids[job_id]['auction_id']} with bid {bids[job_id]['bid']}")
-                        with allocated_jobs_lock:
-                            allocated_jobs.append(job_id)
-                        return
-
-                tmp = {}
-                with bids_lock:
-                    tmp["dst"] = bids[job_id]["auction_id"]
-
-                tmp["visited"] = [self_endpoint]
-                tmp["job_id"] = job_id
+                if float("-inf") in bids[job_id]["auction_id"]:
+                    print(f"Couldn't find an allocation for job {job_id}")
+                else:
+                    self.__deploy_application(job_id)
                     
-                for ep in neighbors_endpoint:
-                    serialized_data = json.dumps(tmp, cls=CustomEncoder).encode('utf-8')
-                    res = ep.request_path(serialized_data)
-                    if res is None:
-                        print(f"No path from {ep}")
-                    else:
-                        print(f"Connecting to {tmp['dst']} through {ep.get_IP()}:{res}", flush=True)
-                        time.sleep(0.5)
-                        sock_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                        try:
-                            sock_client.connect((ep.get_IP(), res))
-                            print(f"Connected to {tmp['dst']}")
-                            with allocated_jobs_lock:
-                                allocated_jobs.append(job_id)
-                        except Exception:
-                            print(f"Failed to reach the endpoint {tmp['dst']}")   
-                        finally: 
-                            break
+                # with bids_lock:
+                #     if self.__id in bids[job_id]["auction_id"]:
+                #         print(f"I won the bid for {job_id}: {bids[job_id]['auction_id']} with bid {bids[job_id]['bid']}")
+                #         with allocated_jobs_lock:
+                #             allocated_jobs.append(job_id)
+                #         return
+
+                # tmp = {}
+                # with bids_lock:
+                #     tmp["dst"] = bids[job_id]["auction_id"]
+
+                # tmp["visited"] = [self_endpoint]
+                # tmp["job_id"] = job_id
+                    
+                # for ep in neighbors_endpoint:
+                #     serialized_data = json.dumps(tmp, cls=CustomEncoder).encode('utf-8')
+                #     res = ep.request_path(serialized_data)
+                #     if res is None:
+                #         print(f"No path from {ep}")
+                #     else:
+                #         print(f"Connecting to {tmp['dst']} through {ep.get_IP()}:{res}", flush=True)
+                #         time.sleep(0.5)
+                #         sock_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                #         try:
+                #             sock_client.connect((ep.get_IP(), res))
+                #             print(f"Connected to {tmp['dst']}")
+                #             with allocated_jobs_lock:
+                #                 allocated_jobs.append(job_id)
+                #         except Exception:
+                #             print(f"Failed to reach the endpoint {tmp['dst']}")   
+                #         finally: 
+                #             break
                 break
                 
     def __work(self, end_processing):

@@ -10,7 +10,7 @@ metadata:
   name: my-cluster-role
 rules:
 - apiGroups: [""]
-  resources: ["services"]
+  resources: ["services", "deployments", "ServiceAccount"]
   verbs: ["create", "get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1

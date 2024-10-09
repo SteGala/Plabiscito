@@ -14,20 +14,24 @@ def custom_decoder(dct):
     return dct
 
 class Endpoint:
-    def __init__(self, name, ip, port):
-        self.__name = name
+    def __init__(self, node_name, node_id, ip, port):
         self.__ip = ip
         self.__port = int(port)
         self.__active = True
+        self.__node_name = node_name
+        self.__node_id = node_id
 
     def get_url(self):
         return f"http://{self.__ip}:{self.__port}"
     
+    def get_node_name(self):
+        return self.__node_name
+    
+    def get_node_id(self):
+        return self.__node_id
+    
     def get_IP(self):
         return self.__ip
-        
-    def get_name(self):
-        return self.__name
     
     def get_port(self):
         return self.__port
