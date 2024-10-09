@@ -1,27 +1,26 @@
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: plebiscito-service-account
-  namespace: default
----
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: my-cluster-role
+  namespace: offloaded-namespace  # Specify the namespace
+  name: plebiscito-deployment-role
 rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["create", "get", "list", "update", "delete"]
 - apiGroups: [""]
-  resources: ["services", "deployments", "ServiceAccount"]
-  verbs: ["create", "get", "list", "watch"]
+  resources: ["services", "serviceaccounts"]
+  verbs: ["create", "get", "list", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: my-cluster-role-binding
+  name: plebiscito-deployment-rolebinding
+  namespace: offloaded-namespace  # Specify the namespace
 subjects:
 - kind: ServiceAccount
-  name: plebiscito-service-account
-  namespace: default
+  name: plebiscito-service-account  # Name of the service account
+  namespace: default  # Specify the namespace where the ServiceAccount is located
 roleRef:
-  kind: ClusterRole
-  name: my-cluster-role
+  kind: Role
+  name: plebiscito-deployment-role  # The Role we defined earlier
   apiGroup: rbac.authorization.k8s.io
