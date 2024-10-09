@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: Plebiscito
+  name: plebiscito
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: Plebiscito
+      app: plebiscito
   template:
     metadata:
       labels:
-        app: Plebiscito
+        app: plebiscito
     spec:
       serviceAccountName: plebiscito-service-account
       containers:
-      - name: Plebiscito
+      - name: plebiscito
         image: stegala/plebiscito:latest
         imagePullPolicy: Always
         env:
