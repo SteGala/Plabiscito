@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: flower-server-service
+  labels:
+    app: flower-server
+spec:
+  selector:
+    app: flower-server
+  ports:
+    - protocol: TCP
+      port: 8000       # Internal service port
+      targetPort: 8000 # Container port
+  type: NodePort      # Internal-only access within the cluster

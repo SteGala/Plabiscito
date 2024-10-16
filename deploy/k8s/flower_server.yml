@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-server
+  labels:
+    app: flower-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flower-server
+  template:
+    metadata:
+      labels:
+        app: flower-server
+    spec:
+      nodeName: {{ node_name }}  # Templated node name
+      containers:
+      - name: flower-server
+        image: stegala/flower-server:v0.1  # Replace with your actual image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: SERVER_IP
+          value: "0.0.0.0"
+        - name: SERVER_PORT
+          value: "8000"
+        - name: NUM_ROUNDS
+          value: "5"
+        command: ["python", "main.py"]  # Make sure this is the correct command to run your Flower server script
+        resources:
+          limits:
+            cpu: "1"  # Set CPU limit to 1 core

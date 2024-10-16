@@ -21,13 +21,13 @@ spec:
         - name: ID
           value: "2"
         - name: NAME
-          value: "instance-77zhv"
+          value: "cluster3"
         - name: ADDRESS
           value: "0.0.0.0"
         - name: PORT
           value: "5000"
         - name: NEIGHBORS
-          value: "proud-tree:0:172.16.183.16:30000,holy-hill:1:172.16.183.50:30000"
+          value: "restless-violet:1:192.168.11.96:30000,young-meadow:0:192.168.11.92:30000"
 ---
 apiVersion: v1
 kind: Service
