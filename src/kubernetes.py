@@ -17,6 +17,65 @@ class KubernetesClient:
             else:
                 # Optionally, you can enforce the target namespace if needed
                 resource['metadata']['namespace'] = target_namespace
+
+    def deploy_flower_application(self, allocation):
+        target_namespace = 'offloaded-namespace'
+        
+        template_content = None
+        service_content = None
+        
+        for i, node_id in enumerate(allocation):
+            if i == 0:
+                with open('deploy/k8s/flower_server.yaml') as file_:
+                    template_content = file_.read()
+                with open('deploy/k8s/flower_server_svc.yaml') as file_:
+                    service_content = yaml.load(file_, Loader=yaml.SafeLoader)
+            else:
+                with open('deploy/k8s/flower_client.yaml') as file_:
+                    template_content = file_.read()
+
+            if service_content is not None:
+                context = {
+                    'node_name': node_id  # Example node name
+                }
+            else:
+                context = {
+                    'node_name': node_id,
+                    'partition_id': int(i-1),
+                    'server_ip': f"flower-server-service.{target_namespace}.svc.cluster.local"
+                }
+
+            # Render the YAML template using Jinja2
+            template = Template(template_content)
+            rendered_yaml = template.render(context)
+
+            # Parse the rendered YAML into a Python object
+            resource = yaml.safe_load(rendered_yaml)
+
+            # Create the Kubernetes AppsV1 API client
+            apps_v1_api = client.AppsV1Api()
+            k8s_client = client.ApiClient()
+
+            # Apply the Deployment resource to the cluster
+            try:
+                apps_v1_api.create_namespaced_deployment(
+                    namespace=target_namespace,  # Change to your desired namespace
+                    body=resource
+                )
+                print(f"Deployment ({i}) successfully applied to node:", context['node_name'], flush=True)
+            except Exception as e:
+                print(f"Error occurred: {e}", flush=True)
+
+            if service_content is not None:
+                self.__add_namespace(service_content, target_namespace)
+
+                try:
+                    create_from_dict(k8s_client, service_content)
+                    print(f"Service ({i}) successfully applied.")
+                except Exception as e:
+                    print(f"Error occurred: {e}", flush=True)
+            
+
         
     def deploy_book_application(self, allocation):
         target_namespace = 'offloaded-namespace'
