@@ -1,37 +1,35 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flower-client
+  name: {{ dep_name }}
   labels:
-    app: flower-client
+    app: {{ dep_name }}
 spec:
   replicas: 1  # Number of client replicas
   selector:
     matchLabels:
-      app: flower-client
+      app: {{ dep_name }}
   template:
     metadata:
       labels:
-        app: flower-client
+        app: {{ dep_name }}
     spec:
       nodeName: {{ node_name }}  # Templated node name
       containers:
-      - name: flower-client
+      - name: {{ dep_name }}
         image: stegala/flower-client:v0.1  # Replace with your actual image
         imagePullPolicy: Always
         env:
-        - name: {{ server_ip }}
-          value: "flower-server-service.default.svc.cluster.local"  # Service name of Flower server
+        - name: SERVER_IP
+          value: "{{ server_ip }}"  # Service name of Flower server
         - name: SERVER_PORT
           value: "8000"
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
         - name: PARTITION_ID
-          value: {{ partition_id }}  # Placeholder, will be set by the script below
+          value: "{{ partition_id }}"  # Placeholder, will be set by the script below
         command: ["python", "-u", "main.py"]
         # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
         resources:
+          requests:
+            cpu: "1"
           limits:
             cpu: "1"  # Set CPU limit to 1 core

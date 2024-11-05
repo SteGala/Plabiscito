@@ -18,62 +18,62 @@ class KubernetesClient:
                 # Optionally, you can enforce the target namespace if needed
                 resource['metadata']['namespace'] = target_namespace
 
-    def deploy_flower_application(self, allocation):
+    def deploy_flower_application(self, allocation, job_id):
         target_namespace = 'offloaded-namespace'
         
-        template_content = None
+        deployment_content = None
         service_content = None
         
         for i, node_id in enumerate(allocation):
+            deployment_content = None
+            service_content = None
+
             if i == 0:
                 with open('deploy/k8s/flower_server.yaml') as file_:
-                    template_content = file_.read()
+                    deployment_content = file_.read()
                 with open('deploy/k8s/flower_server_svc.yaml') as file_:
-                    service_content = yaml.load(file_, Loader=yaml.SafeLoader)
+                    service_content = file_.read()
             else:
                 with open('deploy/k8s/flower_client.yaml') as file_:
-                    template_content = file_.read()
+                    deployment_content = file_.read()
 
             if service_content is not None:
-                context = {
-                    'node_name': node_id  # Example node name
-                }
+                template = Template(deployment_content)
+                deployment_content = template.render(node_name=str(node_id), dep_name=f"flower-server-{job_id}")
+                deployment_content = yaml.safe_load(deployment_content)
+
+                template2 = Template(service_content)
+                service_content = template2.render(svc_name=f"flower-server-svc-{job_id}", dep_name=f"flower-server-{job_id}")
+                service_content = yaml.safe_load(service_content)
             else:
-                context = {
-                    'node_name': node_id,
-                    'partition_id': int(i-1),
-                    'server_ip': f"flower-server-service.{target_namespace}.svc.cluster.local"
-                }
-
-            # Render the YAML template using Jinja2
-            template = Template(template_content)
-            rendered_yaml = template.render(context)
-
-            # Parse the rendered YAML into a Python object
-            resource = yaml.safe_load(rendered_yaml)
+                template = Template(deployment_content)
+                deployment_content = template.render(node_name=str(node_id), partition_id=str(i-1), server_ip=f"flower-server-svc-{job_id}.{target_namespace}.svc.cluster.local", dep_name=f"flower-client-{job_id}-{str(i-1)}")
+                deployment_content = yaml.safe_load(deployment_content)
 
             # Create the Kubernetes AppsV1 API client
             apps_v1_api = client.AppsV1Api()
-            k8s_client = client.ApiClient()
+            core_v1_api = client.CoreV1Api()
 
             # Apply the Deployment resource to the cluster
             try:
                 apps_v1_api.create_namespaced_deployment(
                     namespace=target_namespace,  # Change to your desired namespace
-                    body=resource
+                    body=deployment_content
                 )
-                print(f"Deployment ({i}) successfully applied to node:", context['node_name'], flush=True)
+                print(f"Deployment ({i}) successfully applied", flush=True)
             except Exception as e:
                 print(f"Error occurred: {e}", flush=True)
 
             if service_content is not None:
-                self.__add_namespace(service_content, target_namespace)
-
                 try:
-                    create_from_dict(k8s_client, service_content)
-                    print(f"Service ({i}) successfully applied.")
+                    core_v1_api.create_namespaced_service(
+                        namespace=target_namespace,  # Change to your desired namespace
+                        body=service_content
+                    )
+                    print(f"Service successfully applied", flush=True)
                 except Exception as e:
                     print(f"Error occurred: {e}", flush=True)
+
             
 
         

@@ -1,22 +1,22 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flower-server
+  name: {{ dep_name }}
   labels:
-    app: flower-server
+    app: {{ dep_name }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: flower-server
+      app: {{ dep_name }}
   template:
     metadata:
       labels:
-        app: flower-server
+        app: {{ dep_name }}
     spec:
       nodeName: {{ node_name }}  # Templated node name
       containers:
-      - name: flower-server
+      - name: {{ dep_name }}
         image: stegala/flower-server:v0.1  # Replace with your actual image
         imagePullPolicy: Always
         ports:
@@ -27,8 +27,12 @@ spec:
         - name: SERVER_PORT
           value: "8000"
         - name: NUM_ROUNDS
-          value: "5"
+          value: "10"
+        - name: METRICS_SERVER
+          value: "192.168.11.90:5000"
         command: ["python", "main.py"]  # Make sure this is the correct command to run your Flower server script
         resources:
+          requests:
+            cpu: "1"
           limits:
             cpu: "1"  # Set CPU limit to 1 core

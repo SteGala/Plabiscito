@@ -36,13 +36,54 @@ def read_env_variable():
         neighbors = [x.split(":") for x in neighbors]
         neighbors = [(x[0], x[1], x[2], x[3]) for x in neighbors]
 
-    return node_id, node_name, address, port, neighbors
+    cpu = os.getenv('CPU', -1)
+    if cpu == -1:
+        print("Error: CPU available not found")
+        sys.exit(1)
+    try:
+        cpu = int(cpu)
+    except ValueError:
+        print("Error: Node CPU must an integer")
+        sys.exit(1)
+        cpu = os.getenv('CPU', -1)
+    
+    gpu = os.getenv('GPU', -1)
+    if gpu == -1:
+        print("Error: CPU available not found")
+        sys.exit(1)
+    try:
+        gpu = int(gpu)
+    except ValueError:
+        print("Error: Node GPU must an integer")
+        sys.exit(1)
+
+    mem = os.getenv('MEM', -1)
+    if cpu == -1:
+        print("Error: MEM available not found")
+        sys.exit(1)
+    try:
+        mem = int(mem)
+    except ValueError:
+        print("Error: Node MEM must an integer")
+        sys.exit(1)
+
+    bw = os.getenv('BW', -1)
+    if bw == -1:
+        print("Error: BW available not found")
+        sys.exit(1)
+    try:
+        bw = int(bw)
+    except ValueError:
+        print("Error: Node BW must an integer")
+        sys.exit(1)
+
+    return node_id, node_name, address, port, neighbors, [cpu, gpu, mem, bw]
 
 if __name__ == '__main__':
     print("Starting Plebiscito")
     print("Reading environment variables")
 
-    nodeId, nodeName, address, port, neighbors = read_env_variable()
+    nodeId, nodeName, address, port, neighbors, resources = read_env_variable()
 
     print(f"Starting Plebiscito node instance {nodeId}() at {address}:{port}")
 
@@ -51,5 +92,5 @@ if __name__ == '__main__':
         neighbors_ep.append(Endpoint(neighbor[0], neighbor[1], neighbor[2], neighbor[3]))
 
     self_ep = Endpoint(nodeName, nodeId, address, port)
-    node = PNode(id=nodeId, self_ep=self_ep, neighbors_ep=neighbors_ep, env=Environment.KUBERNETES)
+    node = PNode(id=nodeId, self_ep=self_ep, neighbors_ep=neighbors_ep, env=Environment.KUBERNETES, initial_res=resources)
     node.start_daemon()

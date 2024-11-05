@@ -260,7 +260,7 @@ class PNode:
                 print(f"Exceeded timeout for job {job_id}")
 
 
-    def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", 1, "localhost", "9191"), neighbors_ep=[], reduce_packets=False, queue_timeout=0.05, allocation_timeout=5, env=Environment.BARE_METAL, log_level=logging.DEBUG):
+    def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", 1, "localhost", "9191"), neighbors_ep=[], reduce_packets=False, queue_timeout=0.05, allocation_timeout=5, env=Environment.BARE_METAL, log_level=logging.DEBUG, initial_res=[]):
         global bids, bids_lock, q, neighbors_endpoint, id_node, self_endpoint, proxy_port, environment, kubernetes_client
 
         self.__logger = logging.getLogger('Plebiscito')
@@ -284,10 +284,10 @@ class PNode:
             kubernetes_client = KubernetesClient()
 
         # TODO: update the initial values
-        self.__initial_bw = 3000
-        self.__initial_cpu = 3000
-        self.__initial_gpu = 3000
-        self.__initial_memory = 3000
+        self.__initial_bw = initial_res[3]
+        self.__initial_cpu = initial_res[0]
+        self.__initial_gpu = initial_res[1]
+        self.__initial_memory = initial_res[2]
         self.__updated_bw = self.__initial_bw
         self.__updated_gpu = self.__initial_gpu
         self.__updated_cpu = self.__initial_cpu
@@ -1103,7 +1103,8 @@ class PNode:
                         break
         
         print(f"Mapping of {bids[job_id]['auction_id']} --> {nodes}")
-        kubernetes_client.deploy_book_application(nodes)
+        #kubernetes_client.deploy_book_application(nodes)
+        kubernetes_client.deploy_flower_application(nodes, job_id)
 
     def __check_allocation(self, job_id):
         global allocated_jobs, allocated_jobs_lock

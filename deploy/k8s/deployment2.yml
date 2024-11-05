@@ -27,7 +27,15 @@ spec:
         - name: PORT
           value: "5000"
         - name: NEIGHBORS
-          value: "restless-violet:1:192.168.11.96:30000,young-meadow:0:192.168.11.92:30000"
+          value: "wispy-waterfall:1:192.168.11.111:30000,misty-voice:0:192.168.11.95:30000"
+        - name: CPU
+          value: "4"
+        - name: GPU
+          value: "4"
+        - name: MEM
+          value: "4"
+        - name: BW
+          value: "4"
 ---
 apiVersion: v1
 kind: Service
