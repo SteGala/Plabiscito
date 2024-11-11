@@ -35,7 +35,7 @@ spec:
         - name: MEM
           value: "4"
         - name: BW
-          value: "4"
+          value: "400000"
 ---
 apiVersion: v1
 kind: Service

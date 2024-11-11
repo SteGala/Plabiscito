@@ -385,26 +385,6 @@ class PNode:
     def __utility_function(self, avail_bw, avail_cpu, avail_gpu):
         if self.__utility == Utility.LGF:
             return avail_gpu
-        
-    def __invalidate_bid(self, msg):
-        global bids, bids_lock, neighbors_endpoint
-        
-        with bids_lock:
-            new_bid = [1000000000 for _ in range(self.__item["Bundle_size"])]
-            new_auction = [-1000000000 for _ in range(self.__item["Bundle_size"])]
-            new_timestamp = [datetime.timestamp(datetime.now() + timedelta(weeks=25)) for _ in range(self.__item["Bundle_size"])]
-            
-            bids[self.__item["job_id"]]["bid"] = new_bid
-            bids[self.__item["job_id"]]["auction_id"] = new_auction
-            bids[self.__item["job_id"]]["timestamp"] = new_timestamp
-
-            msg["bid"] = new_bid
-            msg["auction_id"] = new_auction
-            msg["timestamp"] = new_timestamp
-
-            for e in neighbors_endpoint:
-                _ = e.send_msg(msg)
-
 
     def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock, neighbors_endpoint
@@ -509,6 +489,86 @@ class PNode:
                 self.__item["Bundle_memory"][i] <= self.__updated_memory - diff_memory): 
             return True
         return False
+    
+    def __can_host_all(self):
+        cum_cpu = 0
+        cum_gpu = 0
+        cum_bw = 0
+        cum_mem = 0
+        for i, _ in range(self.__item["Bundle_gpus"]):
+            if self.__layer_bid_already[self.__item["job_id"]][i] == True:
+                return False
+            
+            cum_gpu += self.__item["Bundle_gpus"][i]
+            cum_cpu += self.__item["Bundle_cpus"][i]
+            cum_bw += self.__item["Bundle_bw"][i]
+            cum_mem += self.__item["Bundle_memory"][i]
+            
+        if self.__updated_cpu >= cum_cpu and self.__updated_gpu >= cum_gpu and self.__updated_bw >= cum_bw and self.__updated_memory >= cum_mem:
+            return True
+        
+        return False
+            
+    
+    def __bid_network(self): 
+        global bids, bids_lock
+        with bids_lock:
+            tmp_bid = copy.deepcopy(bids[self.__item["job_id"]])
+        found = False
+            
+        bidtime = datetime.timestamp(datetime.now())
+            
+        # if the node does not have enough bw it either allocate the entire application or nothing
+        if self.__updated_bw <= 1:
+            if self.__can_host_all():
+                found = True
+                cum_cpu = 0
+                cum_gpu = 0
+                cum_bw = 0
+                cum_mem = 0
+        
+                for i, _ in range(self.__item["Bundle_gpus"]):                    
+                    cum_gpu += self.__item["Bundle_gpus"][i]
+                    cum_cpu += self.__item["Bundle_cpus"][i]
+                    cum_bw += self.__item["Bundle_bw"][i]
+                    cum_mem += self.__item["Bundle_memory"][i]
+                    
+                    tmp_bid["bid"][i] = 100000000
+                    tmp_bid["auction_id"][i] = self.__id
+                    tmp_bid["timestamp"][i] = bidtime
+                
+                self.__updated_cpu -= cum_cpu
+                self.__updated_gpu -= cum_gpu
+                self.__updated_bw -= cum_bw
+                self.__updated_memory -= cum_mem
+                
+                for i, _ in range(self.__layer_bid_already[self.__item["job_id"]]):
+                    self.__layer_bid_already[self.__item["job_id"]][i] = True
+            else:
+                for i, _ in range(self.__layer_bid_already[self.__item["job_id"]]):
+                    self.__layer_bid_already[self.__item["job_id"]][i] = True
+        else:
+            for i, _ in enumerate(tmp_bid["auction_id"]):
+                # never bid on this layer, try to see if I can outbit
+                if self.__layer_bid_already[self.__item["job_id"]][i] == False:
+                    self.__layer_bid_already[self.__item["job_id"]][i] = True
+                    
+                    if self.__can_host(i):
+                        found = True
+                        tmp_bid["bid"][i] = self.__utility_function(self.__updated_bw, self.__updated_cpu, self.__updated_gpu)
+                        tmp_bid["auction_id"][i] = self.__id
+                        tmp_bid["timestamp"][i] = bidtime
+                        
+                        self.__updated_cpu -= self.__item["Bundle_cpus"][i]
+                        self.__updated_gpu -= self.__item["Bundle_gpus"][i] 
+                        self.__updated_bw -= self.__item["Bundle_bw"][i] 
+                        self.__updated_memory -= self.__item["Bundle_memory"][i] 
+        
+        if found:
+            with bids_lock:
+                bids[self.__item["job_id"]] = copy.deepcopy(tmp_bid)
+            return True
+        return False                                            
 
     def __bid(self):
         global bids, bids_lock
@@ -1201,7 +1261,7 @@ class PNode:
                         if self.__item["type"] == "topology":
                             success = self.__update_bid(self.__bid_topology)
                         elif self.__item["type"] == "allocate":
-                            success = self.__update_bid(self.__bid)
+                            success = self.__update_bid(self.__bid_network)
 
                         need_rebroadcast = need_rebroadcast or success
 
