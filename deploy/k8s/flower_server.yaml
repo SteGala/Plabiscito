@@ -33,6 +33,6 @@ spec:
         command: ["python", "main.py"]  # Make sure this is the correct command to run your Flower server script
         resources:
           requests:
-            cpu: "1"
+            cpu: "{{ cpu_assigned }}"
           limits:
-            cpu: "1"  # Set CPU limit to 1 core
+            cpu: "{{ cpu_assigned }}"  # Set CPU limit to 1 core

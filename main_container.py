@@ -3,7 +3,7 @@ import sys
 
 from src.network import Endpoint
 from src.plebiscito_node import PNode
-from src.config import Environment
+from src.config import Environment, str_to_utility
 
 def read_env_variable():
     # get node ID
@@ -76,14 +76,21 @@ def read_env_variable():
     except ValueError:
         print("Error: Node BW must an integer")
         sys.exit(1)
+        
+    utility = os.getenv('UTILITY', "LGF")
+    try:
+        utility = str_to_utility(utility)
+    except Exception as e:
+        print(e)
+        sys.exit(1)
 
-    return node_id, node_name, address, port, neighbors, [cpu, gpu, mem, bw]
+    return node_id, node_name, address, port, neighbors, [cpu, gpu, mem, bw], utility
 
 if __name__ == '__main__':
     print("Starting Plebiscito")
     print("Reading environment variables")
 
-    nodeId, nodeName, address, port, neighbors, resources = read_env_variable()
+    nodeId, nodeName, address, port, neighbors, resources, utility = read_env_variable()
 
     print(f"Starting Plebiscito node instance {nodeId}() at {address}:{port}")
 
@@ -92,5 +99,5 @@ if __name__ == '__main__':
         neighbors_ep.append(Endpoint(neighbor[0], neighbor[1], neighbor[2], neighbor[3]))
 
     self_ep = Endpoint(nodeName, nodeId, address, port)
-    node = PNode(id=nodeId, self_ep=self_ep, neighbors_ep=neighbors_ep, env=Environment.KUBERNETES, initial_res=resources)
+    node = PNode(id=nodeId, self_ep=self_ep, neighbors_ep=neighbors_ep, env=Environment.KUBERNETES, initial_res=resources, utility=utility)
     node.start_daemon()

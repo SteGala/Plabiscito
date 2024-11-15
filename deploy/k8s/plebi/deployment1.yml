@@ -1,53 +1,55 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: plebiscito
+  name: plebiscito-1
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: plebiscito
+      app: plebiscito-1
   template:
     metadata:
       labels:
-        app: plebiscito
+        app: plebiscito-1
     spec:
+      nodeName: cluster2
       serviceAccountName: plebiscito-service-account
       containers:
-      - name: plebiscito
+      - name: plebiscito-1
         image: stegala/plebiscito:latest
         imagePullPolicy: Always
         env:
         - name: ID
-          value: "0"
+          value: "1"
         - name: NAME
-          value: "cluster1"
+          value: "cluster2"
         - name: ADDRESS
           value: "0.0.0.0"
         - name: PORT
           value: "5000"
         - name: NEIGHBORS
-          value: "wispy-waterfall:1:192.168.11.111:30000,cool-wildflower:2:192.168.11.110:30000"
+          value: "cluster1:0:plebiscito-0.default.svc.cluster.local:5000,cluster3:2:plebiscito-2.default.svc.cluster.local:7000"
         - name: CPU
-          value: "4"
+          value: "3"
         - name: GPU
-          value: "4"
+          value: "3"
         - name: MEM
-          value: "4"
+          value: "3"
         - name: BW
-          value: "1"
+          value: "40000"
+        - name: UTILITY
+          value: "SGF"
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: plebiscito-nodeport
+  name: plebiscito-1
   labels:
-    app: plebiscito
+    app: plebiscito-1
 spec:
-  type: NodePort
+  type: ClusterIP
   selector:
-    app: plebiscito
+    app: plebiscito-1
   ports:
-    - port: 5000
+    - port: 6000
       targetPort: 5000
-      nodePort: 30000  # The NodePort accessible externally

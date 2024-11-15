@@ -67,7 +67,7 @@ class Endpoint:
             return False
         
     def __str__(self):
-        return f"{self.__name} ({self.__ip}:{self.__port})"
+        return f"{self.__node_name} ({self.__ip}:{self.__port})"
 
     def __eq__(self, other):
         return self.__ip == other.__ip and self.__port == other.__port

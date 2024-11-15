@@ -62,7 +62,9 @@ class PClient:
         return job_id
 
 if __name__ == '__main__':
-    client = PClient("http://192.168.11.95", 30000, "client1")
-    client.request_allocation(cpus=[1, 1, 1], gpus=[1, 1, 1], bw=[1, 1, 1], mem=[1, 1, 1], duration=5)
-    client.request_topology()
+    client = PClient("http://192.168.11.95", 31000, "client1")
+    for i in range(6):
+        client.request_allocation(cpus=[0.2, 0.5, 0.5], gpus=[0.2, 0.5, 0.5], bw=[0, 0, 0], mem=[0.2, 0.5, 0.5], duration=5)
+        time.sleep(20)
+    #client.request_topology()
         

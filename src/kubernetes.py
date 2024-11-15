@@ -18,7 +18,7 @@ class KubernetesClient:
                 # Optionally, you can enforce the target namespace if needed
                 resource['metadata']['namespace'] = target_namespace
 
-    def deploy_flower_application(self, allocation, job_id):
+    def deploy_flower_application(self, allocation, job_id, cpus):
         target_namespace = 'offloaded-namespace'
         
         deployment_content = None
@@ -39,7 +39,7 @@ class KubernetesClient:
 
             if service_content is not None:
                 template = Template(deployment_content)
-                deployment_content = template.render(node_name=str(node_id), dep_name=f"flower-server-{job_id}")
+                deployment_content = template.render(node_name=str(node_id), dep_name=f"flower-server-{job_id}", cpu_assigned=str(cpus[i]))
                 deployment_content = yaml.safe_load(deployment_content)
 
                 template2 = Template(service_content)
@@ -47,7 +47,7 @@ class KubernetesClient:
                 service_content = yaml.safe_load(service_content)
             else:
                 template = Template(deployment_content)
-                deployment_content = template.render(node_name=str(node_id), partition_id=str(i-1), server_ip=f"flower-server-svc-{job_id}.{target_namespace}.svc.cluster.local", dep_name=f"flower-client-{job_id}-{str(i-1)}")
+                deployment_content = template.render(node_name=str(node_id), partition_id=str(i-1), server_ip=f"flower-server-svc-{job_id}.{target_namespace}.svc.cluster.local", dep_name=f"flower-client-{job_id}-{str(i-1)}", cpu_assigned=str(cpus[i]))
                 deployment_content = yaml.safe_load(deployment_content)
 
             # Create the Kubernetes AppsV1 API client

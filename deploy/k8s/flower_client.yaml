@@ -18,7 +18,6 @@ spec:
       containers:
       - name: {{ dep_name }}
         image: stegala/flower-client:v0.1  # Replace with your actual image
-        imagePullPolicy: Always
         env:
         - name: SERVER_IP
           value: "{{ server_ip }}"  # Service name of Flower server
@@ -30,6 +29,6 @@ spec:
         # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
         resources:
           requests:
-            cpu: "1"
+            cpu: "{{ cpu_assigned }}"
           limits:
-            cpu: "1"  # Set CPU limit to 1 core
+            cpu: "{{ cpu_assigned }}"  # Set CPU limit to 1 core

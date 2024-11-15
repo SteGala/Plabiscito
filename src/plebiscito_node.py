@@ -44,7 +44,7 @@ environment = None
 kubernetes_client = None
 topology_id = []
 topology_id_lock = threading.Lock()
-MAX_NODES = 4
+MAX_NODES = 5
 
 class PNode:
     class MyHandler(BaseHTTPRequestHandler):
@@ -385,6 +385,8 @@ class PNode:
     def __utility_function(self, avail_bw, avail_cpu, avail_gpu):
         if self.__utility == Utility.LGF:
             return avail_gpu
+        if self.__utility == Utility.SGF:
+            return self.__initial_gpu - avail_gpu
 
     def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock, neighbors_endpoint
@@ -405,6 +407,9 @@ class PNode:
 
         if first_msg:
             for e in neighbors_endpoint:
+                # print(bids[self.__item["job_id"]]["auction_id"])
+                # print(bids[self.__item["job_id"]]["bid"])
+                # print()
                 _ = e.send_msg(msg)
             return
 
@@ -428,6 +433,9 @@ class PNode:
         
         for e in neighbors_endpoint:
             success = e.send_msg(msg)
+            # print(bids[self.__item["job_id"]]["auction_id"])
+            # print(bids[self.__item["job_id"]]["bid"])
+            # print()
             if not success:
                 # self.__invalidate_bid(msg)
                 # break
@@ -495,7 +503,7 @@ class PNode:
         cum_gpu = 0
         cum_bw = 0
         cum_mem = 0
-        for i, _ in range(self.__item["Bundle_gpus"]):
+        for i in range(len(self.__item["Bundle_gpus"])):
             if self.__layer_bid_already[self.__item["job_id"]][i] == True:
                 return False
             
@@ -512,6 +520,7 @@ class PNode:
     
     def __bid_network(self): 
         global bids, bids_lock
+        # print(len(bids[self.__item["job_id"]]["auction_id"]))
         with bids_lock:
             tmp_bid = copy.deepcopy(bids[self.__item["job_id"]])
         found = False
@@ -527,7 +536,7 @@ class PNode:
                 cum_bw = 0
                 cum_mem = 0
         
-                for i, _ in range(self.__item["Bundle_gpus"]):                    
+                for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):                    
                     cum_gpu += self.__item["Bundle_gpus"][i]
                     cum_cpu += self.__item["Bundle_cpus"][i]
                     cum_bw += self.__item["Bundle_bw"][i]
@@ -542,20 +551,20 @@ class PNode:
                 self.__updated_bw -= cum_bw
                 self.__updated_memory -= cum_mem
                 
-                for i, _ in range(self.__layer_bid_already[self.__item["job_id"]]):
+                for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
                     self.__layer_bid_already[self.__item["job_id"]][i] = True
             else:
-                for i, _ in range(self.__layer_bid_already[self.__item["job_id"]]):
+                for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
                     self.__layer_bid_already[self.__item["job_id"]][i] = True
         else:
-            for i, _ in enumerate(tmp_bid["auction_id"]):
-                # never bid on this layer, try to see if I can outbit
-                if self.__layer_bid_already[self.__item["job_id"]][i] == False:
-                    self.__layer_bid_already[self.__item["job_id"]][i] = True
-                    
-                    if self.__can_host(i):
+            first_bid = True
+            for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
+                # never bid on this layer, try to see if I can outbit        
+                if self.__can_host(i):
+                    curr_bid = self.__utility_function(self.__updated_bw, self.__updated_cpu, self.__updated_gpu)
+                    if curr_bid > tmp_bid["bid"][i] or (curr_bid == tmp_bid["bid"][i] and self.__id < tmp_bid["auction_id"][i]):
                         found = True
-                        tmp_bid["bid"][i] = self.__utility_function(self.__updated_bw, self.__updated_cpu, self.__updated_gpu)
+                        tmp_bid["bid"][i] = curr_bid
                         tmp_bid["auction_id"][i] = self.__id
                         tmp_bid["timestamp"][i] = bidtime
                         
@@ -563,11 +572,18 @@ class PNode:
                         self.__updated_gpu -= self.__item["Bundle_gpus"][i] 
                         self.__updated_bw -= self.__item["Bundle_bw"][i] 
                         self.__updated_memory -= self.__item["Bundle_memory"][i] 
+                        if first_bid:
+                            self.__layer_bid_already[self.__item["job_id"]][i] = True
+                            first_bid = False
         
         if found:
             with bids_lock:
                 bids[self.__item["job_id"]] = copy.deepcopy(tmp_bid)
+            # print(len(bids[self.__item["job_id"]]["auction_id"]))
+            # print()
             return True
+        # print(len(bids[self.__item["job_id"]]["auction_id"]))
+        # print()
         return False                                            
 
     def __bid(self):
@@ -1051,7 +1067,7 @@ class PNode:
         if reset_flag:
             msg_to_resend = copy.deepcopy(tmp_local)
             for i in reset_ids:
-                _ = self.reset(i, tmp_local, bid_time - timedelta(days=1))
+                _ = self.reset(i, tmp_local, bid_time - timedelta(days=1).seconds)
                 msg_to_resend["auction_id"][i] = self.__item["auction_id"][i]
                 msg_to_resend["bid"][i] = self.__item["bid"][i]
                 msg_to_resend["timestamp"][i] = self.__item["timestamp"][i]
@@ -1150,7 +1166,7 @@ class PNode:
         self.__daemon.start()
         self.__daemon.join()
         
-    def __deploy_application(self, job_id):
+    def __deploy_application(self, job_id, cpus):
         nodes = []
         for b_id in bids[job_id]["auction_id"]:
             if b_id == self.__id:
@@ -1164,9 +1180,9 @@ class PNode:
         
         print(f"Mapping of {bids[job_id]['auction_id']} --> {nodes}")
         #kubernetes_client.deploy_book_application(nodes)
-        kubernetes_client.deploy_flower_application(nodes, job_id)
+        kubernetes_client.deploy_flower_application(nodes, job_id, cpus)
 
-    def __check_allocation(self, job_id):
+    def __check_allocation(self, job_id, cpus):
         global allocated_jobs, allocated_jobs_lock
 
         while True:
@@ -1182,44 +1198,15 @@ class PNode:
             if need_to_sleep:
                 time.sleep(sleep_time)
             else:
-                if float("-inf") in bids[job_id]["auction_id"]:
-                    print(f"Couldn't find an allocation for job {job_id}")
-                else:
-                    print(f"Allocating job {job_id}. Auction id: {bids[job_id]['auction_id']}")
-                    self.__deploy_application(job_id)
-                    
-                # with bids_lock:
-                #     if self.__id in bids[job_id]["auction_id"]:
-                #         print(f"I won the bid for {job_id}: {bids[job_id]['auction_id']} with bid {bids[job_id]['bid']}")
-                #         with allocated_jobs_lock:
-                #             allocated_jobs.append(job_id)
-                #         return
+                with bids_lock:
+                    if float("-inf") in bids[job_id]["auction_id"]:
+                        print(bids)
+                        print(f"Couldn't find an allocation for job {job_id}")
+                        print(bids[job_id]["auction_id"])
+                    else:
+                        print(f"Allocating job {job_id}. Auction id: {bids[job_id]['auction_id']}")
+                        self.__deploy_application(job_id, cpus)
 
-                # tmp = {}
-                # with bids_lock:
-                #     tmp["dst"] = bids[job_id]["auction_id"]
-
-                # tmp["visited"] = [self_endpoint]
-                # tmp["job_id"] = job_id
-                    
-                # for ep in neighbors_endpoint:
-                #     serialized_data = json.dumps(tmp, cls=CustomEncoder).encode('utf-8')
-                #     res = ep.request_path(serialized_data)
-                #     if res is None:
-                #         print(f"No path from {ep}")
-                #     else:
-                #         print(f"Connecting to {tmp['dst']} through {ep.get_IP()}:{res}", flush=True)
-                #         time.sleep(0.5)
-                #         sock_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                #         try:
-                #             sock_client.connect((ep.get_IP(), res))
-                #             print(f"Connected to {tmp['dst']}")
-                #             with allocated_jobs_lock:
-                #                 allocated_jobs.append(job_id)
-                #         except Exception:
-                #             print(f"Failed to reach the endpoint {tmp['dst']}")   
-                #         finally: 
-                #             break
                 break
                 
     def __work(self, end_processing):
@@ -1254,7 +1241,7 @@ class PNode:
                             self.__counter[self.__item["job_id"]] = 0
                             if self.__item["edge_id"] == None and self.__item["type"] == "allocate":
                                 self.__tasks_from_clients.append(self.__item["job_id"])
-                                threading.Thread(target=self.__check_allocation, args=(self.__item["job_id"],)).start()
+                                threading.Thread(target=self.__check_allocation, args=(self.__item["job_id"], copy.deepcopy(self.__item["Bundle_cpus"]))).start()
                         self.__counter[self.__item["job_id"]] += 1
 
                         # differentiate bidding based on the type of the message
