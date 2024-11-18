@@ -41,9 +41,9 @@ def read_env_variable():
         print("Error: CPU available not found")
         sys.exit(1)
     try:
-        cpu = int(cpu)
+        cpu = float(cpu)
     except ValueError:
-        print("Error: Node CPU must an integer")
+        print("Error: Node CPU must an float")
         sys.exit(1)
         cpu = os.getenv('CPU', -1)
     
@@ -52,9 +52,9 @@ def read_env_variable():
         print("Error: CPU available not found")
         sys.exit(1)
     try:
-        gpu = int(gpu)
+        gpu = float(gpu)
     except ValueError:
-        print("Error: Node GPU must an integer")
+        print("Error: Node GPU must an float")
         sys.exit(1)
 
     mem = os.getenv('MEM', -1)
@@ -62,9 +62,9 @@ def read_env_variable():
         print("Error: MEM available not found")
         sys.exit(1)
     try:
-        mem = int(mem)
+        mem = float(mem)
     except ValueError:
-        print("Error: Node MEM must an integer")
+        print("Error: Node MEM must an float")
         sys.exit(1)
 
     bw = os.getenv('BW', -1)
@@ -72,9 +72,9 @@ def read_env_variable():
         print("Error: BW available not found")
         sys.exit(1)
     try:
-        bw = int(bw)
+        bw = float(bw)
     except ValueError:
-        print("Error: Node BW must an integer")
+        print("Error: Node BW must an float")
         sys.exit(1)
         
     utility = os.getenv('UTILITY', "LGF")

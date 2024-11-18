@@ -63,8 +63,8 @@ class PClient:
 
 if __name__ == '__main__':
     client = PClient("http://192.168.11.95", 31000, "client1")
-    for i in range(6):
-        client.request_allocation(cpus=[0.2, 0.5, 0.5], gpus=[0.2, 0.5, 0.5], bw=[0, 0, 0], mem=[0.2, 0.5, 0.5], duration=5)
+    for i in range(4):
+        client.request_allocation(cpus=[0.25, 0.5, 0.5], gpus=[0.25, 0.5, 0.5], bw=[0, 0, 0], mem=[0.25, 0.5, 0.5], duration=5)
         time.sleep(20)
     #client.request_topology()
         

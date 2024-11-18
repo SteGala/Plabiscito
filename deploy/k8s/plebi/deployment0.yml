@@ -30,15 +30,15 @@ spec:
         - name: NEIGHBORS
           value: "cluster2:1:plebiscito-1.default.svc.cluster.local:6000,cluster3:2:plebiscito-2.default.svc.cluster.local:7000"
         - name: CPU
-          value: "3"
+          value: "2.25"
         - name: GPU
-          value: "3"
+          value: "2.25"
         - name: MEM
-          value: "3"
+          value: "2.25"
         - name: BW
-          value: "100000"
+          value: "1000"
         - name: UTILITY
-          value: "SGF"
+          value: "LGF"
 ---
 apiVersion: v1
 kind: Service
