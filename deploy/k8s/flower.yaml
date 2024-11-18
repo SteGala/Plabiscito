@@ -1,0 +1,483 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-server-1
+  labels:
+    app: flower-server-1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flower-server-1
+  template:
+    metadata:
+      labels:
+        app: flower-server-1
+    spec:
+      containers:
+      - name: flower-server-1
+        image: stegala/flower-server:v0.1  # Replace with your actual image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: SERVER_IP
+          value: "0.0.0.0"
+        - name: SERVER_PORT
+          value: "8000"
+        - name: NUM_ROUNDS
+          value: "10"
+        - name: METRICS_SERVER
+          value: "192.168.11.90:5000"
+        command: ["python", "main.py"]  # Make sure this is the correct command to run your Flower server script
+        resources:
+          requests:
+            cpu: "0.25"
+          limits:
+            cpu: "0.25"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-server-2
+  labels:
+    app: flower-server-2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flower-server-2
+  template:
+    metadata:
+      labels:
+        app: flower-server-2
+    spec:
+      containers:
+      - name: flower-server-2
+        image: stegala/flower-server:v0.1  # Replace with your actual image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: SERVER_IP
+          value: "0.0.0.0"
+        - name: SERVER_PORT
+          value: "8000"
+        - name: NUM_ROUNDS
+          value: "10"
+        - name: METRICS_SERVER
+          value: "192.168.11.90:5000"
+        command: ["python", "main.py"]  # Make sure this is the correct command to run your Flower server script
+        resources:
+          requests:
+            cpu: "0.25"
+          limits:
+            cpu: "0.25"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-server-3
+  labels:
+    app: flower-server-3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flower-server-3
+  template:
+    metadata:
+      labels:
+        app: flower-server-3
+    spec:
+      containers:
+      - name: flower-server-3
+        image: stegala/flower-server:v0.1  # Replace with your actual image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: SERVER_IP
+          value: "0.0.0.0"
+        - name: SERVER_PORT
+          value: "8000"
+        - name: NUM_ROUNDS
+          value: "10"
+        - name: METRICS_SERVER
+          value: "192.168.11.90:5000"
+        command: ["python", "main.py"]  # Make sure this is the correct command to run your Flower server script
+        resources:
+          requests:
+            cpu: "0.25"
+          limits:
+            cpu: "0.25"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-server-4
+  labels:
+    app: flower-server-4
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flower-server-4
+  template:
+    metadata:
+      labels:
+        app: flower-server-4
+    spec:
+      containers:
+      - name: flower-server-4
+        image: stegala/flower-server:v0.1  # Replace with your actual image
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+        env:
+        - name: SERVER_IP
+          value: "0.0.0.0"
+        - name: SERVER_PORT
+          value: "8000"
+        - name: NUM_ROUNDS
+          value: "10"
+        - name: METRICS_SERVER
+          value: "192.168.11.90:5000"
+        command: ["python", "main.py"]  # Make sure this is the correct command to run your Flower server script
+        resources:
+          requests:
+            cpu: "0.25"
+          limits:
+            cpu: "0.25"  # Set CPU limit to 1 core
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flower-server-svc-1
+  labels:
+    app: flower-server-svc-1
+spec:
+  selector:
+    app: flower-server-1
+  ports:
+    - protocol: TCP
+      port: 8000       # Internal service port
+      targetPort: 8000 # Container port
+  type: ClusterIP      # Internal-only access within the cluster
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flower-server-svc-2
+  labels:
+    app: flower-server-svc-2
+spec:
+  selector:
+    app: flower-server-2
+  ports:
+    - protocol: TCP
+      port: 8000       # Internal service port
+      targetPort: 8000 # Container port
+  type: ClusterIP      # Internal-only access within the cluster
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flower-server-svc-3
+  labels:
+    app: flower-server-svc-3
+spec:
+  selector:
+    app: flower-server-3
+  ports:
+    - protocol: TCP
+      port: 8000       # Internal service port
+      targetPort: 8000 # Container port
+  type: ClusterIP      # Internal-only access within the cluster
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flower-server-svc-4
+  labels:
+    app: flower-server-svc-4
+spec:
+  selector:
+    app: flower-server-4
+  ports:
+    - protocol: TCP
+      port: 8000       # Internal service port
+      targetPort: 8000 # Container port
+  type: ClusterIP      # Internal-only access within the cluster
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-client-1-1
+  labels:
+    app: flower-client-1-1
+spec:
+  replicas: 1  # Number of client replicas
+  selector:
+    matchLabels:
+      app: flower-client-1-1
+  template:
+    metadata:
+      labels:
+        app: flower-client-1-1
+    spec:
+      containers:
+      - name: flower-client-1-1
+        image: stegala/flower-client:v0.1  # Replace with your actual image
+        env:
+        - name: SERVER_IP
+          value: "flower-server-svc-1.offloaded-namespace.svc.cluster.local"  # Service name of Flower server
+        - name: SERVER_PORT
+          value: "8000"
+        - name: PARTITION_ID
+          value: "0"  # Placeholder, will be set by the script below
+        command: ["python", "-u", "main.py"]
+        # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
+        resources:
+          requests:
+            cpu: "0.5"
+          limits:
+            cpu: "0.5"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-client-1-2
+  labels:
+    app: flower-client-1-2
+spec:
+  replicas: 1  # Number of client replicas
+  selector:
+    matchLabels:
+      app: flower-client-1-2
+  template:
+    metadata:
+      labels:
+        app: flower-client-1-2
+    spec:
+      containers:
+      - name: flower-client-1-2
+        image: stegala/flower-client:v0.1  # Replace with your actual image
+        env:
+        - name: SERVER_IP
+          value: "flower-server-svc-1.offloaded-namespace.svc.cluster.local"  # Service name of Flower server
+        - name: SERVER_PORT
+          value: "8000"
+        - name: PARTITION_ID
+          value: "1"  # Placeholder, will be set by the script below
+        command: ["python", "-u", "main.py"]
+        # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
+        resources:
+          requests:
+            cpu: "0.5"
+          limits:
+            cpu: "0.5"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-client-2-1
+  labels:
+    app: flower-client-2-1
+spec:
+  replicas: 1  # Number of client replicas
+  selector:
+    matchLabels:
+      app: flower-client-2-1
+  template:
+    metadata:
+      labels:
+        app: flower-client-2-1
+    spec:
+      containers:
+      - name: flower-client-2-1
+        image: stegala/flower-client:v0.1  # Replace with your actual image
+        env:
+        - name: SERVER_IP
+          value: "flower-server-svc-2.offloaded-namespace.svc.cluster.local"  # Service name of Flower server
+        - name: SERVER_PORT
+          value: "8000"
+        - name: PARTITION_ID
+          value: "0"  # Placeholder, will be set by the script below
+        command: ["python", "-u", "main.py"]
+        # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
+        resources:
+          requests:
+            cpu: "0.5"
+          limits:
+            cpu: "0.5"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-client-2-2
+  labels:
+    app: flower-client-2-2
+spec:
+  replicas: 1  # Number of client replicas
+  selector:
+    matchLabels:
+      app: flower-client-2-2
+  template:
+    metadata:
+      labels:
+        app: flower-client-2-2
+    spec:
+      containers:
+      - name: flower-client-2-2
+        image: stegala/flower-client:v0.1  # Replace with your actual image
+        env:
+        - name: SERVER_IP
+          value: "flower-server-svc-2.offloaded-namespace.svc.cluster.local"  # Service name of Flower server
+        - name: SERVER_PORT
+          value: "8000"
+        - name: PARTITION_ID
+          value: "1"  # Placeholder, will be set by the script below
+        command: ["python", "-u", "main.py"]
+        # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
+        resources:
+          requests:
+            cpu: "0.5"
+          limits:
+            cpu: "0.5"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-client-3-1
+  labels:
+    app: flower-client-3-1
+spec:
+  replicas: 1  # Number of client replicas
+  selector:
+    matchLabels:
+      app: flower-client-3-1
+  template:
+    metadata:
+      labels:
+        app: flower-client-3-1
+    spec:
+      containers:
+      - name: flower-client-3-1
+        image: stegala/flower-client:v0.1  # Replace with your actual image
+        env:
+        - name: SERVER_IP
+          value: "flower-server-svc-3.offloaded-namespace.svc.cluster.local"  # Service name of Flower server
+        - name: SERVER_PORT
+          value: "8000"
+        - name: PARTITION_ID
+          value: "0"  # Placeholder, will be set by the script below
+        command: ["python", "-u", "main.py"]
+        # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
+        resources:
+          requests:
+            cpu: "0.5"
+          limits:
+            cpu: "0.5"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-client-3-2
+  labels:
+    app: flower-client-3-2
+spec:
+  replicas: 1  # Number of client replicas
+  selector:
+    matchLabels:
+      app: flower-client-3-2
+  template:
+    metadata:
+      labels:
+        app: flower-client-3-2
+    spec:
+      containers:
+      - name: flower-client-3-2
+        image: stegala/flower-client:v0.1  # Replace with your actual image
+        env:
+        - name: SERVER_IP
+          value: "flower-server-svc-3.offloaded-namespace.svc.cluster.local"  # Service name of Flower server
+        - name: SERVER_PORT
+          value: "8000"
+        - name: PARTITION_ID
+          value: "1"  # Placeholder, will be set by the script below
+        command: ["python", "-u", "main.py"]
+        # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
+        resources:
+          requests:
+            cpu: "0.5"
+          limits:
+            cpu: "0.5"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-client-4-1
+  labels:
+    app: flower-client-4-1
+spec:
+  replicas: 1  # Number of client replicas
+  selector:
+    matchLabels:
+      app: flower-client-4-1
+  template:
+    metadata:
+      labels:
+        app: flower-client-4-1
+    spec:
+      containers:
+      - name: flower-client-4-1
+        image: stegala/flower-client:v0.1  # Replace with your actual image
+        env:
+        - name: SERVER_IP
+          value: "flower-server-svc-4.offloaded-namespace.svc.cluster.local"  # Service name of Flower server
+        - name: SERVER_PORT
+          value: "8000"
+        - name: PARTITION_ID
+          value: "0"  # Placeholder, will be set by the script below
+        command: ["python", "-u", "main.py"]
+        # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
+        resources:
+          requests:
+            cpu: "0.5"
+          limits:
+            cpu: "0.5"  # Set CPU limit to 1 core
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flower-client-4-2
+  labels:
+    app: flower-client-4-2
+spec:
+  replicas: 1  # Number of client replicas
+  selector:
+    matchLabels:
+      app: flower-client-4-2
+  template:
+    metadata:
+      labels:
+        app: flower-client-4-2
+    spec:
+      containers:
+      - name: flower-client-4-2
+        image: stegala/flower-client:v0.1  # Replace with your actual image
+        env:
+        - name: SERVER_IP
+          value: "flower-server-svc-4.offloaded-namespace.svc.cluster.local"  # Service name of Flower server
+        - name: SERVER_PORT
+          value: "8000"
+        - name: PARTITION_ID
+          value: "1"  # Placeholder, will be set by the script below
+        command: ["python", "-u", "main.py"]
+        # The shell command extracts the number after the last dash (-) in POD_NAME and uses it as PARTITION_ID
+        resources:
+          requests:
+            cpu: "0.5"
+          limits:
+            cpu: "0.5"  # Set CPU limit to 1 core
