@@ -43,16 +43,16 @@ echo "pushgateway installed successfully."
 
 echo "Setup completed successfully."
 
-sleep 5
+sleep 2
 
 # Get the service in the plebi namespace of type nodeport
-SERVICE=$(kubectl get svc -n monitoring grafana -o jsonpath='{.items[0].spec.ports[0].nodePort}')
+SERVICE=$(kubectl get service grafana -n monitoring -o jsonpath='{.spec.ports[0].nodePort}')
 
 # Get the IP address of the nodes
 NODE_IPS=$(kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}')
 echo "The Grafana dashboard is available at http://[$NODE_IPS]:$SERVICE"
 
 # Get the service in the plebi namespace of type nodeport
-SERVICE=$(kubectl get svc -n monitoring prometheus-k8s -o jsonpath='{.items[0].spec.ports[0].nodePort}')
+SERVICE=$(kubectl get service prometheus-k8s -n monitoring -o jsonpath='{.spec.ports[0].nodePort}')
 
 echo "The Prometheus dashboard is available at http://[$NODE_IPS]:$SERVICE"
