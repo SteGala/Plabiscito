@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: plebi-{{NODE_NAME}}
+  namespace: plebi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: plebi-{{NODE_NAME}}
+  template:
+    metadata:
+      labels:
+        app: plebi-{{NODE_NAME}}
+    spec:
+      nodeName: "{{NODE_NAME}}"
+      serviceAccountName: plebiscito-service-account
+      containers:
+      - name: plebi-{{NODE_NAME}}
+        image: stegala/plebiscito:latest
+        imagePullPolicy: Always
+        env:
+        - name: ID
+          value: "{{ID}}"
+        - name: NAME
+          value: "{{NODE_NAME}}"
+        - name: ADDRESS
+          value: "0.0.0.0"
+        - name: PORT
+          value: "5000"
+        - name: NEIGHBORS
+          value: "{{NEIGHBORS_LIST}}"
+        - name: CPU
+          value: "{{CPU}}"
+        - name: GPU
+          value: "{{GPU}}"
+        - name: MEM
+          value: "{{MEMORY}}"
+        - name: BW
+          value: "{{BW}}"
+        - name: UTILITY
+          value: "{{UTILITY}}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: plebi-{{NODE_NAME}}
+  namespace: plebi
+  labels:
+    app: plebi-{{NODE_NAME}}
+spec:
+  type: {{SERVICE_TYPE}}
+  selector:
+    app: plebi-{{NODE_NAME}}
+  ports:
+    - port: 5000
+      targetPort: 5000
