@@ -2,7 +2,7 @@ from enum import Enum
 import json
 import hashlib
 import time
-
+import sys
 import requests
 from datetime import datetime
 
@@ -61,10 +61,45 @@ class PClient:
 
         return job_id
 
+jobs = []
+jobs.append([0.25, 1, 1, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1, 1, 1])
+
+jobs.append([0.25, 1, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1, 1])
+
+jobs.append([0.25, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1])
+jobs.append([0.25, 1, 1, 1])
+
+jobs.append([0.25, 1, 1])
+jobs.append([0.25, 1, 1])
+jobs.append([0.25, 1, 1])
+jobs.append([0.25, 1, 1])
+jobs.append([0.25, 1, 1])
+
 if __name__ == '__main__':
-    client = PClient("http://192.168.11.95", 31000, "client1")
-    for i in range(4):
-        client.request_allocation(cpus=[0.25, 0.5, 0.5], gpus=[0.25, 0.5, 0.5], bw=[0, 0, 0], mem=[0.25, 0.5, 0.5], duration=5)
-        time.sleep(20)
+    port = 0
+    if len(sys.argv) > 1:
+        try:
+            # Read the first argument as an integer
+            port = int(sys.argv[1])
+        except ValueError:
+            print("The argument provided is not a valid integer.")
+    else:
+        print("No argument was provided.")
+
+    client = PClient("http://10.132.3.2", port, "client1")
+    for i in range(20):
+        client.request_allocation(cpus=jobs[i], gpus=jobs[i], bw=jobs[i], mem=jobs[i], duration=5)
+        time.sleep(5)
     #client.request_topology()
         
