@@ -54,15 +54,15 @@ def main():
 
     # Query string for the CPU utilization metric
     query_cpu = f"""
-    instance:node_cpu_utilisation:rate5m{{job="node-exporter"}} * instance:node_num_cpu:sum{{job="node-exporter"}}
+    instance:node_cpu_utilisation:rate5m * instance:node_num_cpu:sum
     """
 
     query_transmit = f"""
-    instance:node_network_transmit_bytes_excluding_lo:rate5m{{job="node-exporter"}} != 0
+    instance:node_network_transmit_bytes_excluding_lo:rate5m != 0
     """
 
     query_receive = f"""
-    instance:node_network_receive_bytes_excluding_lo:rate5m{{job="node-exporter"}} != 0
+    instance:node_network_receive_bytes_excluding_lo:rate5m != 0
     """
 
     query_training_time = f"""
@@ -99,7 +99,7 @@ def main():
         metric_data = fetch_prometheus_metric(prometheus_url, query_training_time)
         save_to_csv("training_time.csv", metric_data)
 
-        time.sleep(10)
+        time.sleep(15)
 
 if __name__ == "__main__":
     main()
