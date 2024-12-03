@@ -35,7 +35,7 @@ def save_to_csv(file_name, metric_data):
                 metric_value.append(value[1])
 
             if timestamp is None:
-                writer.writerow([0, 0])
+                writer.writerow([0, [0]])
                 return
             # Write data to CSV
             writer.writerow([timestamp, metric_value])

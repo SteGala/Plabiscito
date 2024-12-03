@@ -44,7 +44,7 @@ environment = None
 kubernetes_client = None
 topology_id = []
 topology_id_lock = threading.Lock()
-MAX_NODES = 5
+MAX_NODES = 10
 
 class PNode:
     class MyHandler(BaseHTTPRequestHandler):
