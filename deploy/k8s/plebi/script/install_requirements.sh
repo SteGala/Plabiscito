@@ -31,6 +31,7 @@ kubectl apply -f manifests/
 kubectl delete networkpolicies --all -n monitoring
 kubectl patch service grafana -n monitoring -p '{"spec": {"type": "NodePort"}}'
 kubectl patch service prometheus-k8s -n monitoring -p '{"spec": {"type": "NodePort"}}'
+kubectl patch service node-exporter -n monitoring -p '{"spec": {"type": "NodePort"}}'
 
 echo "kube-prometheus installed successfully."
 cd ..
