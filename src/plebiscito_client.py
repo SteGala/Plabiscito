@@ -88,20 +88,21 @@ jobs.append([0.25, 1, 1])
 
 if __name__ == '__main__':
     port = 0
-    if len(sys.argv) == 3:
+    if len(sys.argv) == 4:
         try:
             # Read the first argument as an integer
-            port = int(sys.argv[1])
-            instances = int(sys.argv[2])
+            ip = sys.argv[1]
+            port = int(sys.argv[2])
+            instances = int(sys.argv[3])
         except ValueError as e:
             raise e
 
-        client = PClient("http://10.132.3.2", port, "client1")
+        client = PClient(f"http://{ip}", port, "client1")
         for i in range(instances):
             client.request_allocation(cpus=jobs[i], gpus=jobs[i], bw=jobs[i], mem=jobs[i], duration=5)
             time.sleep(5)
     else:
-        print("Use with [Plebiscito port] [n_instances].") 
+        print("Use with [Plebiscito IP] [Plebiscito port] [n_instances].") 
 
     
     #client.request_topology()
