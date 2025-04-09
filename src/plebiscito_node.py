@@ -1180,7 +1180,8 @@ class PNode:
         
         print(f"Mapping of {bids[job_id]['auction_id']} --> {nodes}")
         #kubernetes_client.deploy_book_application(nodes)
-        kubernetes_client.deploy_flower_application(nodes, job_id, cpus)
+        #kubernetes_client.deploy_flower_application(nodes, job_id, cpus)
+        kubernetes_client.deploy_iperf_application(nodes, job_id, cpus)
 
     def __check_allocation(self, job_id, cpus):
         global allocated_jobs, allocated_jobs_lock
@@ -1206,7 +1207,7 @@ class PNode:
                     else:
                         print(f"Allocating job {job_id}. Auction id: {bids[job_id]['auction_id']}")
                         self.__deploy_application(job_id, cpus)
-
+                        
                 break
                 
     def __work(self, end_processing):

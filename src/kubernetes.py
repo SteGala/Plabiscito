@@ -18,6 +18,62 @@ class KubernetesClient:
                 # Optionally, you can enforce the target namespace if needed
                 resource['metadata']['namespace'] = target_namespace
 
+    def deploy_iperf_application(self, allocation, job_id, cpus):
+        target_namespace = 'offloaded-namespace'
+
+        deployment_content = None
+        service_content = None
+        
+        for i, node_id in enumerate(allocation):
+            deployment_content = None
+            service_content = None
+
+            if i == 0:
+                with open('deploy/k8s/iperf_server.yaml') as file_:
+                    deployment_content = file_.read()
+                with open('deploy/k8s/iperf_server_svc.yaml') as file_:
+                    service_content = file_.read()
+            else:
+                with open('deploy/k8s/iperf_client.yaml') as file_:
+                    deployment_content = file_.read()
+
+            if service_content is not None:
+                template = Template(deployment_content)
+                deployment_content = template.render(node_name=str(node_id), dep_name=f"iperf-server-{job_id}", cpu_assigned=str(cpus[i]), num_workers=str(len(allocation) - 1))
+                deployment_content = yaml.safe_load(deployment_content)
+
+                template2 = Template(service_content)
+                service_content = template2.render(svc_name=f"iperf-server-svc-{job_id}", dep_name=f"iperf-server-{job_id}")
+                service_content = yaml.safe_load(service_content)
+            else:
+                template = Template(deployment_content)
+                deployment_content = template.render(node_name=str(node_id), worker_id=str(i-1), ps_host=f"iperf-server-svc-{job_id}.{target_namespace}.svc.cluster.local", dep_name=f"iperf-client-{job_id}-{str(i-1)}", cpu_assigned=str(cpus[i]))
+                deployment_content = yaml.safe_load(deployment_content)
+
+            # Create the Kubernetes AppsV1 API client
+            apps_v1_api = client.AppsV1Api()
+            core_v1_api = client.CoreV1Api()
+
+            # Apply the Deployment resource to the cluster
+            try:
+                apps_v1_api.create_namespaced_deployment(
+                    namespace=target_namespace,  # Change to your desired namespace
+                    body=deployment_content
+                )
+                print(f"Deployment ({i}) successfully applied", flush=True)
+            except Exception as e:
+                print(f"Error occurred: {e}", flush=True)
+
+            if service_content is not None:
+                try:
+                    core_v1_api.create_namespaced_service(
+                        namespace=target_namespace,  # Change to your desired namespace
+                        body=service_content
+                    )
+                    print(f"Service successfully applied", flush=True)
+                except Exception as e:
+                    print(f"Error occurred: {e}", flush=True)
+
     def deploy_flower_application(self, allocation, job_id, cpus):
         target_namespace = 'offloaded-namespace'
         

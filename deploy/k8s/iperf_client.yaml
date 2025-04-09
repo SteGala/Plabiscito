@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ dep_name }}
+spec:
+  replicas: 1  # Set to match NUM_WORKERS
+  selector:
+    matchLabels:
+      app: {{ dep_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ dep_name }}
+    spec:
+      nodeName: {{ node_name }}  # Templated node name
+      containers:
+        - name: {{ dep_name }}
+          image: stegala/iperf:v0.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          env:
+            - name: MODE
+              value: "worker"
+            - name: PORT
+              value: "5000"
+            - name: PS_HOST
+              value: "{{ ps_host }}"  # Kubernetes DNS resolves this service
+            - name: NUM_ITERATIONS
+              value: "30"
+            - name: NN_MODEL
+              value: "ResNet50"
+            - name: WORKER_ID
+              value: "{{ worker_id }}"
+          resources:
+            requests:
+              cpu: "{{ cpu_assigned }}"
+            limits:
+              cpu: "{{ cpu_assigned }}"  # Set CPU limit to 1 core

@@ -61,45 +61,25 @@ class PClient:
 
         return job_id
 
-jobs = []
-jobs.append([0.25, 1, 1, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1, 1, 1])
-
-jobs.append([0.25, 1, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1, 1])
-
-jobs.append([0.25, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1])
-jobs.append([0.25, 1, 1, 1])
-
-jobs.append([0.25, 1, 1])
-jobs.append([0.25, 1, 1])
-jobs.append([0.25, 1, 1])
-jobs.append([0.25, 1, 1])
-jobs.append([0.25, 1, 1])
-
 if __name__ == '__main__':
     port = 0
-    if len(sys.argv) == 4:
+    if len(sys.argv) == 9:
         try:
             # Read the first argument as an integer
             ip = sys.argv[1]
             port = int(sys.argv[2])
-            instances = int(sys.argv[3])
+            cpu = float(sys.argv[3])
+            gpu = float(sys.argv[4])
+            bw = float(sys.argv[5])
+            mem = float(sys.argv[6])
+            replicas = int(sys.argv[7])
+            instances = int(sys.argv[8])
         except ValueError as e:
             raise e
 
         client = PClient(f"http://{ip}", port, "client1")
         for i in range(instances):
-            client.request_allocation(cpus=jobs[i], gpus=jobs[i], bw=jobs[i], mem=jobs[i], duration=5)
+            client.request_allocation(cpus=[cpu for _ in range(replicas)], gpus=[gpu for _ in range(replicas)], bw=[bw for _ in range(replicas)], mem=[mem for _ in range(replicas)], duration=5)
             time.sleep(5)
     else:
         print("Use with [Plebiscito IP] [Plebiscito port] [n_instances].") 

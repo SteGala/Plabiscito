@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ dep_name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ dep_name }}
+  template:
+    metadata:
+      labels:
+        app: {{ dep_name }}
+    spec:
+      nodeName: {{ node_name }}  # Templated node name
+      containers:
+        - name: {{ dep_name }}
+          image: stegala/iperf:v0.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          env:
+            - name: MODE
+              value: "ps"
+            - name: PORT
+              value: "5000"
+            - name: NUM_WORKERS
+              value: "{{ num_workers }}"
+            - name: NUM_ITERATIONS
+              value: "30"
+          resources:
+            requests:
+              cpu: "{{ cpu_assigned }}"
+            limits:
+              cpu: "{{ cpu_assigned }}"  # Set CPU limit to 1 core
