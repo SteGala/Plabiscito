@@ -17,29 +17,12 @@ if [ -z "$nodes" ]; then
     exit 0
 fi
 
-echo "Installing kube-prometheus..."
-git clone https://github.com/prometheus-operator/kube-prometheus.git
-cd kube-prometheus
+echo "Installing Prometheus..."
 
-kubectl create -f manifests/setup
-kubectl wait \
-	--for condition=Established \
-	--all CustomResourceDefinition \
-	--namespace=monitoring
-kubectl apply -f manifests/
-
-kubectl delete networkpolicies --all -n monitoring
-kubectl patch service grafana -n monitoring -p '{"spec": {"type": "NodePort"}}'
-kubectl patch service prometheus-k8s -n monitoring -p '{"spec": {"type": "NodePort"}}'
-
-echo "kube-prometheus installed successfully."
-cd ..
-
-rm -rf kube-prometheus
-
-echo "Installing pushgateway..."
-kubectl apply -f pushgateway.yaml
-echo "pushgateway installed successfully."
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --set grafana.service.type=NodePort --set prometheus.service.type=NodePort
 
 echo "Setup completed successfully."
 
