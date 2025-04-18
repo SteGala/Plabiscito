@@ -4,6 +4,7 @@ import logging
 class Utility(Enum):
     LGF = 1
     SGF = 2
+    LCF = 3
     
 # create a function that maps a string to a Utility enum
 def str_to_utility(s):
@@ -11,6 +12,8 @@ def str_to_utility(s):
         return Utility.LGF
     elif s == "SGF":
         return Utility.SGF
+    elif s == "LCF":
+        return Utility.LCF
     else:
         raise ValueError("Invalid utility string")
        

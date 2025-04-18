@@ -92,8 +92,6 @@ if __name__ == '__main__':
 
     nodeId, nodeName, address, port, neighbors, resources, utility = read_env_variable()
 
-    print(f"Starting Plebiscito node instance {nodeId}() at {address}:{port}")
-
     neighbors_ep = []
     for neighbor in neighbors:
         neighbors_ep.append(Endpoint(neighbor[0], neighbor[1], neighbor[2], neighbor[3]))

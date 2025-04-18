@@ -305,6 +305,13 @@ class PNode:
         self.__run_http_server()
 
         self.__logger.info(f"Initialization completed.")
+        print(f"Initialization completed.", flush=True)
+        print("------SUMMARY------", flush=True)
+        print(self_endpoint)
+        print("Neighbors:", flush=True)
+        for e in neighbors_endpoint:
+            print(e, flush=True)
+        print("-------------------", flush=True)
 
     def get_avail_gpu(self):
         return self.__updated_gpu
@@ -387,6 +394,8 @@ class PNode:
             return avail_gpu
         if self.__utility == Utility.SGF:
             return self.__initial_gpu - avail_gpu
+        if self.__utility == Utility.LCF:
+            return avail_cpu
 
     def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock, neighbors_endpoint

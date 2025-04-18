@@ -6,6 +6,95 @@ spec:
   selector:
     app: {{ dep_name }}
   ports:
-    - protocol: TCP
+    - name: port-5000
+      protocol: TCP
       port: 5000
       targetPort: 5000
+    - name: port-6000
+      protocol: TCP
+      port: 6000
+      targetPort: 6000
+    - name: port-6001
+      protocol: TCP
+      port: 6001
+      targetPort: 6001
+    - name: port-6002
+      protocol: TCP
+      port: 6002
+      targetPort: 6002
+    - name: port-6003
+      protocol: TCP
+      port: 6003
+      targetPort: 6003
+    - name: port-6004
+      protocol: TCP
+      port: 6004
+      targetPort: 6004
+    - name: port-6005
+      protocol: TCP
+      port: 6005
+      targetPort: 6005
+    - name: port-6006
+      protocol: TCP
+      port: 6006
+      targetPort: 6006
+    - name: port-6007
+      protocol: TCP
+      port: 6007
+      targetPort: 6007
+    - name: port-6008
+      protocol: TCP
+      port: 6008
+      targetPort: 6008
+    - name: port-6009
+      protocol: TCP
+      port: 6009
+      targetPort: 6009
+    - name: port-6010
+      protocol: TCP
+      port: 6010
+      targetPort: 6010
+    - name: port-7000
+      protocol: TCP
+      port: 7000
+      targetPort: 7000
+    - name: port-7001
+      protocol: TCP
+      port: 7001
+      targetPort: 7001
+    - name: port-7002
+      protocol: TCP
+      port: 7002
+      targetPort: 7002
+    - name: port-7003
+      protocol: TCP
+      port: 7003
+      targetPort: 7003
+    - name: port-7004
+      protocol: TCP
+      port: 7004
+      targetPort: 7004
+    - name: port-7005
+      protocol: TCP
+      port: 7005
+      targetPort: 7005
+    - name: port-7006
+      protocol: TCP
+      port: 7006
+      targetPort: 7006
+    - name: port-7007
+      protocol: TCP
+      port: 7007
+      targetPort: 7007
+    - name: port-7008
+      protocol: TCP
+      port: 7008
+      targetPort: 7008
+    - name: port-7009
+      protocol: TCP
+      port: 7009
+      targetPort: 7009
+    - name: port-7010
+      protocol: TCP
+      port: 7010
+      targetPort: 7010

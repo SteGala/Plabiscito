@@ -40,9 +40,11 @@ class Endpoint:
         json_data = json.dumps(msg)
         try:
             requests.post(self.get_url(), data=json_data.encode('utf-8'))
+            print(f"Message sent to {self.__node_name} ({self.__ip}:{self.__port})", flush=True)
             return True
-        except ConnectionError:
+        except ConnectionError as e:
             self.__active = False
+            print(f"Connection error to {self.__node_name} ({self.__ip}:{self.__port}). {e}", flush=True)
             return False
         
     def request_path(self, msg):
