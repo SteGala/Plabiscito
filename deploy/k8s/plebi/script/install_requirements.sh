@@ -24,6 +24,8 @@ helm repo add prometheus-community https://prometheus-community.github.io/helm-c
 helm repo update
 helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --set grafana.service.type=NodePort --set prometheus.service.type=NodePort
 
+kubectl create -f pushgateway.yaml
+
 echo "Setup completed successfully."
 
 sleep 2
