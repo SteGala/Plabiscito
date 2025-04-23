@@ -306,12 +306,14 @@ class PNode:
 
         self.__logger.info(f"Initialization completed.")
         print(f"Initialization completed.", flush=True)
+        print()
         print("------SUMMARY------", flush=True)
         print(self_endpoint)
         print("Neighbors:", flush=True)
         for e in neighbors_endpoint:
-            print(e, flush=True)
+            print(f"  - {e}", flush=True)
         print("-------------------", flush=True)
+        print()
 
     def get_avail_gpu(self):
         return self.__updated_gpu
@@ -389,13 +391,21 @@ class PNode:
 
             self.__layer_bid_already[self.__item["job_id"]] = [False] * self.__item["Bundle_size"]
 
-    def __utility_function(self, avail_bw, avail_cpu, avail_gpu):
+    def __utility_function(self, avail_bw, avail_cpu, avail_gpu, layer_id, server_winner):
+        global neighbors_endpoint
+
         if self.__utility == Utility.LGF:
             return avail_gpu
         if self.__utility == Utility.SGF:
             return self.__initial_gpu - avail_gpu
         if self.__utility == Utility.LCF:
-            return avail_cpu
+            if layer_id == 0 or (layer_id != 0 and server_winner == self.__id):
+                return avail_cpu
+            
+            for e in neighbors_endpoint:
+                print(f"e.get_node_id(): {e.get_node_id()} server_winner: {server_winner}")
+                if int(e.get_node_id()) == int(server_winner):
+                    return avail_cpu/(e.get_hop_count()-1)
 
     def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock, neighbors_endpoint
@@ -416,9 +426,6 @@ class PNode:
 
         if first_msg:
             for e in neighbors_endpoint:
-                # print(bids[self.__item["job_id"]]["auction_id"])
-                # print(bids[self.__item["job_id"]]["bid"])
-                # print()
                 _ = e.send_msg(msg)
             return
 
@@ -442,12 +449,7 @@ class PNode:
         
         for e in neighbors_endpoint:
             success = e.send_msg(msg)
-            # print(bids[self.__item["job_id"]]["auction_id"])
-            # print(bids[self.__item["job_id"]]["bid"])
-            # print()
             if not success:
-                # self.__invalidate_bid(msg)
-                # break
                 pass
 
         return
@@ -547,62 +549,38 @@ class PNode:
         found = False
             
         bidtime = datetime.timestamp(datetime.now())
-            
-        # if the node does not have enough bw it either allocate the entire application or nothing
-        if self.__updated_bw/self.__initial_bw <= 0.2:
-            if self.__can_host_all():
-                found = True
-                cum_cpu = 0
-                cum_gpu = 0
-                cum_mem = 0
+        server_winner = None
         
-                for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):                    
-                    cum_gpu += self.__item["Bundle_gpus"][i]
-                    cum_cpu += self.__item["Bundle_cpus"][i]
-                    cum_mem += self.__item["Bundle_memory"][i]
-                    
-                    tmp_bid["bid"][i] = 100000000 - self.__id
+        for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
+            # never bid on this layer, try to see if I can outbit        
+            if self.__layer_bid_already[self.__item["job_id"]][i] == True:
+                continue
+
+            if i == 0:
+                server_winner = tmp_bid["auction_id"][i]
+
+            if self.__can_host(i):
+                curr_bid = self.__utility_function(self.__updated_bw, self.__updated_cpu, self.__updated_gpu, i, server_winner)
+                print(curr_bid, tmp_bid["bid"][i])
+                if curr_bid > tmp_bid["bid"][i] or (curr_bid == tmp_bid["bid"][i] and self.__id < tmp_bid["auction_id"][i]):
+                    found = True
+                    tmp_bid["bid"][i] = curr_bid
                     tmp_bid["auction_id"][i] = self.__id
                     tmp_bid["timestamp"][i] = bidtime
-                
-                self.__updated_cpu -= cum_cpu
-                self.__updated_gpu -= cum_gpu
-                self.__updated_memory -= cum_mem
-                
-                for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
-                    self.__layer_bid_already[self.__item["job_id"]][i] = True
-            else:
-                for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
-                    self.__layer_bid_already[self.__item["job_id"]][i] = True
-        else:
-            first_bid = True
-            for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
-                # never bid on this layer, try to see if I can outbit        
-                if self.__can_host(i):
-                    curr_bid = self.__utility_function(self.__updated_bw, self.__updated_cpu, self.__updated_gpu)
-                    if curr_bid > tmp_bid["bid"][i] or (curr_bid == tmp_bid["bid"][i] and self.__id < tmp_bid["auction_id"][i]):
-                        found = True
-                        tmp_bid["bid"][i] = curr_bid
-                        tmp_bid["auction_id"][i] = self.__id
-                        tmp_bid["timestamp"][i] = bidtime
-                        
-                        self.__updated_cpu -= self.__item["Bundle_cpus"][i]
-                        self.__updated_gpu -= self.__item["Bundle_gpus"][i] 
-                        if i != 0 and self.__item["auction_id"][0] != self.__id:
-                            self.__updated_bw -= self.__item["Bundle_bw"][i] 
-                        self.__updated_memory -= self.__item["Bundle_memory"][i] 
-                        if first_bid:
-                            self.__layer_bid_already[self.__item["job_id"]][i] = True
-                            first_bid = False
+                    
+                    self.__updated_cpu -= self.__item["Bundle_cpus"][i]
+                    self.__updated_gpu -= self.__item["Bundle_gpus"][i] 
+                    self.__updated_memory -= self.__item["Bundle_memory"][i] 
+
+                    if i == 0:
+                        server_winner = tmp_bid["auction_id"][i]
+
+            self.__layer_bid_already[self.__item["job_id"]][i] = True
         
         if found:
             with bids_lock:
                 bids[self.__item["job_id"]] = copy.deepcopy(tmp_bid)
-            # print(len(bids[self.__item["job_id"]]["auction_id"]))
-            # print()
             return True
-        # print(len(bids[self.__item["job_id"]]["auction_id"]))
-        # print()
         return False                                            
 
     def __deconfliction(self):
@@ -930,7 +908,7 @@ class PNode:
 
         cpu = 0
         gpu = 0
-        bw = 0
+        #bw = 0
         mem = 0
 
         first_1 = False
@@ -939,14 +917,14 @@ class PNode:
             if (tmp_local["auction_id"][i] == self.__id and prev_bet["auction_id"][i] != self.__id):
                 cpu -= self.__item["Bundle_cpus"][i]
                 gpu -= self.__item["Bundle_gpus"][i]
-                bw -= self.__item["Bundle_bw"][i]
+                #bw -= self.__item["Bundle_bw"][i]
                 mem -= self.__item["Bundle_memory"][i]
                 if not first_1:
                     first_1 = True
             elif (tmp_local["auction_id"][i] != self.__id and prev_bet["auction_id"][i] == self.__id):
                 cpu += self.__item["Bundle_cpus"][i]
                 gpu += self.__item["Bundle_gpus"][i]
-                bw += self.__item["Bundle_bw"][i]
+                #bw += self.__item["Bundle_bw"][i]
                 mem += self.__item["Bundle_memory"][i]
 
                 if not first_2:
@@ -954,10 +932,15 @@ class PNode:
 
         self.__updated_cpu += cpu
         self.__updated_gpu += gpu
-        self.__updated_bw += bw
+        #self.__updated_bw += bw
         self.__updated_memory += mem
 
         with bids_lock:
+            if bids[self.__item["job_id"]]["auction_id"][0] != tmp_local["auction_id"][0]:
+                for i in range(1, len(tmp_local["auction_id"])):
+                    if tmp_local["auction_id"][i] != self.__id and tmp_local["auction_id"][i] != bids[self.__item["job_id"]]["auction_id"][i]:
+                        self.__layer_bid_already[self.__item["job_id"]][i] = False
+
             bids[self.__item["job_id"]] = copy.deepcopy(tmp_local)
 
         return rebroadcast

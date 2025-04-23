@@ -40,18 +40,4 @@ spec:
           value: "{{BW}}"
         - name: UTILITY
           value: "{{UTILITY}}"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: plebi-{{NODE_NAME}}
-  namespace: plebi
-  labels:
-    app: plebi-{{NODE_NAME}}
-spec:
-  type: {{SERVICE_TYPE}}
-  selector:
-    app: plebi-{{NODE_NAME}}
-  ports:
-    - port: 5000
-      targetPort: 5000
+

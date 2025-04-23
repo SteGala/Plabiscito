@@ -1,4 +1,5 @@
 import json
+import subprocess
 import requests
 from requests.exceptions import ConnectionError
 
@@ -13,13 +14,36 @@ def custom_decoder(dct):
         return Endpoint(dct['name'], dct['ip'], dct['port'])
     return dct
 
+def get_hop_count(destination_IP, destination_port):
+    try:
+        # Run traceroute with TCP and capture stdout
+        result = subprocess.run(
+            ["traceroute", "-T", destination_IP, "-p", str(destination_port)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,  # suppress traceroute errors
+            text=True,
+            check=True
+        )
+        
+        # Count lines that start with a number (hop lines)
+        hop_lines = [line for line in result.stdout.splitlines() if line.strip().split(" ")[0].isdigit()]
+        return len(hop_lines)
+    
+    except subprocess.CalledProcessError as e:
+        print(f"Error: traceroute to {destination_IP} failed.")
+        raise e
+
 class Endpoint:
-    def __init__(self, node_name, node_id, ip, port):
+    def __init__(self, node_name, node_id, ip, port, countHop=False):
         self.__ip = ip
         self.__port = int(port)
         self.__active = True
         self.__node_name = node_name
         self.__node_id = node_id
+        if countHop:
+            self.__hopcount = get_hop_count(self.__ip, self.__port)
+        else:
+            self.__hopcount = 1
 
     def get_url(self):
         return f"http://{self.__ip}:{self.__port}"
@@ -35,6 +59,9 @@ class Endpoint:
     
     def get_port(self):
         return self.__port
+    
+    def get_hop_count(self):
+        return self.__hopcount
     
     def send_msg(self, msg):
         json_data = json.dumps(msg)
@@ -69,7 +96,7 @@ class Endpoint:
             return False
         
     def __str__(self):
-        return f"{self.__node_name} ({self.__ip}:{self.__port})"
+        return f"{self.__node_name} ({self.__ip}:{self.__port}) hop distance: {self.__hopcount}"
 
     def __eq__(self, other):
         return self.__ip == other.__ip and self.__port == other.__port

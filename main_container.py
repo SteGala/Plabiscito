@@ -74,7 +74,7 @@ def read_env_variable():
     try:
         bw = float(bw)
     except ValueError:
-        print("Error: Node BW must an float")
+        print("Error: Node BW must an float, current value is: ", bw)
         sys.exit(1)
         
     utility = os.getenv('UTILITY', "LGF")
@@ -94,8 +94,8 @@ if __name__ == '__main__':
 
     neighbors_ep = []
     for neighbor in neighbors:
-        neighbors_ep.append(Endpoint(neighbor[0], neighbor[1], neighbor[2], neighbor[3]))
+        neighbors_ep.append(Endpoint(neighbor[0], neighbor[1], neighbor[2], neighbor[3], countHop=True))
 
-    self_ep = Endpoint(nodeName, nodeId, address, port)
+    self_ep = Endpoint(nodeName, nodeId, address, port, countHop=False)
     node = PNode(id=nodeId, self_ep=self_ep, neighbors_ep=neighbors_ep, env=Environment.KUBERNETES, initial_res=resources, utility=utility)
     node.start_daemon()
