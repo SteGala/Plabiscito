@@ -399,13 +399,16 @@ class PNode:
         if self.__utility == Utility.SGF:
             return self.__initial_gpu - avail_gpu
         if self.__utility == Utility.LCF:
+            if server_winner is None:
+                return avail_cpu
+            
             if layer_id == 0 or (layer_id != 0 and server_winner == self.__id):
                 return avail_cpu
             
             for e in neighbors_endpoint:
                 print(f"e.get_node_id(): {e.get_node_id()} server_winner: {server_winner}")
                 if int(e.get_node_id()) == int(server_winner):
-                    return avail_cpu/(e.get_hop_count()-1)
+                    return avail_cpu/(e.get_hop_count()/2)
 
     def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock, neighbors_endpoint
@@ -547,6 +550,7 @@ class PNode:
                             self.__updated_bw -= bids[key]["Bundle_bw"][i]
                 
         found = False
+        #print(f"Updated BW: {self.__updated_bw}")
             
         bidtime = datetime.timestamp(datetime.now())
         server_winner = None
@@ -561,7 +565,7 @@ class PNode:
 
             if self.__can_host(i):
                 curr_bid = self.__utility_function(self.__updated_bw, self.__updated_cpu, self.__updated_gpu, i, server_winner)
-                print(curr_bid, tmp_bid["bid"][i])
+                #print(curr_bid, tmp_bid["bid"][i])
                 if curr_bid > tmp_bid["bid"][i] or (curr_bid == tmp_bid["bid"][i] and self.__id < tmp_bid["auction_id"][i]):
                     found = True
                     tmp_bid["bid"][i] = curr_bid
