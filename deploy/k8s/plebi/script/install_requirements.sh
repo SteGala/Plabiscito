@@ -22,9 +22,8 @@ echo "Installing Prometheus..."
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo update
-helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --set grafana.service.type=NodePort --set prometheus.service.type=NodePort
-
-kubectl create -f pushgateway.yaml
+helm install prometheus prometheus-community/kube-prometheus-stack --namespace monitoring --create-namespace --set grafana.service.type=NodePort --set prometheus.service.type=NodePort --set prometheus-node-exporter.prometheus.monitor.interval=10s
+helm install pushgateway prometheus-community/prometheus-pushgateway --set serviceMonitor.enabled=true --set serviceMonitor.additionalLabels.release=prometheus --namespace monitoring
 
 echo "Setup completed successfully."
 
