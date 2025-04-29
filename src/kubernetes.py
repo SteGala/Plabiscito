@@ -60,7 +60,7 @@ class KubernetesClient:
                     namespace=target_namespace,  # Change to your desired namespace
                     body=deployment_content
                 )
-                print(f"Deployment ({i}) successfully applied", flush=True)
+                #print(f"Deployment ({i}) successfully applied", flush=True)
             except Exception as e:
                 print(f"Error occurred: {e}", flush=True)
 
@@ -70,7 +70,7 @@ class KubernetesClient:
                         namespace=target_namespace,  # Change to your desired namespace
                         body=service_content
                     )
-                    print(f"Service successfully applied", flush=True)
+                    #print(f"Service successfully applied", flush=True)
                 except Exception as e:
                     print(f"Error occurred: {e}", flush=True)
 

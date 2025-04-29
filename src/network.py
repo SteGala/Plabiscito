@@ -1,5 +1,6 @@
 import json
 import subprocess
+import time
 import requests
 from requests.exceptions import ConnectionError
 
@@ -67,7 +68,7 @@ class Endpoint:
         json_data = json.dumps(msg)
         try:
             requests.post(self.get_url(), data=json_data.encode('utf-8'))
-            print(f"Message sent to {self.__node_name} ({self.__ip}:{self.__port})", flush=True)
+            #print(time.time(), f"Message sent to {self.__node_name} ({self.__ip}:{self.__port})", flush=True)
             return True
         except ConnectionError as e:
             self.__active = False

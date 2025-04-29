@@ -390,6 +390,8 @@ class PNode:
                 }
 
             self.__layer_bid_already[self.__item["job_id"]] = [False] * self.__item["Bundle_size"]
+            if len(self.__layer_bid_already[self.__item["job_id"]]) != 1:
+                self.__layer_bid_already[self.__item["job_id"]][0] = True
 
     def __utility_function(self, avail_bw, avail_cpu, avail_gpu, layer_id, server_winner):
         global neighbors_endpoint
@@ -399,6 +401,8 @@ class PNode:
         if self.__utility == Utility.SGF:
             return self.__initial_gpu - avail_gpu
         if self.__utility == Utility.LCF:
+            return avail_cpu
+        if self.__utility == Utility.LCF_BW:
             if server_winner is None:
                 return avail_cpu
             
@@ -512,24 +516,6 @@ class PNode:
             return True
         return False
     
-    def __can_host_all(self):
-        cum_cpu = 0
-        cum_gpu = 0
-        cum_mem = 0
-        for i in range(len(self.__item["Bundle_gpus"])):
-            if self.__layer_bid_already[self.__item["job_id"]][i] == True:
-                return False
-            
-            cum_gpu += self.__item["Bundle_gpus"][i]
-            cum_cpu += self.__item["Bundle_cpus"][i]
-            cum_mem += self.__item["Bundle_memory"][i]
-            
-        if self.__updated_cpu >= cum_cpu and self.__updated_gpu >= cum_gpu and self.__updated_memory >= cum_mem:
-            return True
-        
-        return False
-            
-    
     def __bid_network(self): 
         global bids, bids_lock
         # print(len(bids[self.__item["job_id"]]["auction_id"]))
@@ -578,6 +564,9 @@ class PNode:
 
                     if i == 0:
                         server_winner = tmp_bid["auction_id"][i]
+                    
+                    self.__layer_bid_already[self.__item["job_id"]][i] = True
+                    break
 
             self.__layer_bid_already[self.__item["job_id"]][i] = True
         
@@ -597,10 +586,23 @@ class PNode:
             tmp_local = copy.deepcopy(bids[self.__item["job_id"]])
             prev_bet = copy.deepcopy(bids[self.__item["job_id"]])
         
-        index = 0
+        index = 0 if self.__item["Bundle_size"] == 1 else 1
         reset_flag = False
         reset_ids = []
         bid_time = datetime.timestamp(datetime.now())
+
+        if self.__item["Bundle_size"] > 1:
+            if self.__item["auction_id"][0] != tmp_local["auction_id"][0]:
+                rebroadcast = True
+                self.__update_local_val(
+                    tmp_local,
+                    0,
+                    self.__item["auction_id"][0],
+                    self.__item["bid"][0],
+                    self.__item["timestamp"][0],
+                    self.__item["Data"][0]
+                )
+
 
         while index < self.__item["Bundle_size"]:
             z_kj = self.__item["auction_id"][index]
@@ -940,10 +942,10 @@ class PNode:
         self.__updated_memory += mem
 
         with bids_lock:
-            if bids[self.__item["job_id"]]["auction_id"][0] != tmp_local["auction_id"][0]:
-                for i in range(1, len(tmp_local["auction_id"])):
-                    if tmp_local["auction_id"][i] != self.__id and tmp_local["auction_id"][i] != bids[self.__item["job_id"]]["auction_id"][i]:
-                        self.__layer_bid_already[self.__item["job_id"]][i] = False
+            # if bids[self.__item["job_id"]]["auction_id"][0] != tmp_local["auction_id"][0]:
+            #     for i in range(1, len(tmp_local["auction_id"])):
+            #         if tmp_local["auction_id"][i] != self.__id and tmp_local["auction_id"][i] != bids[self.__item["job_id"]]["auction_id"][i]:
+            #             self.__layer_bid_already[self.__item["job_id"]][i] = False
 
             bids[self.__item["job_id"]] = copy.deepcopy(tmp_local)
 
@@ -1020,9 +1022,88 @@ class PNode:
         #kubernetes_client.deploy_flower_application(nodes, job_id, cpus)
         kubernetes_client.deploy_iperf_application(nodes, job_id, cpus)
 
-    def __check_allocation(self, job_id, cpus):
-        global allocated_jobs, allocated_jobs_lock
+    def __check_allocation(self, job, cpus):
+        def forge_request(j_id, template=None):
+            global q
+            # print(template)
+            
+            if template is None:
+                data = {
+                    "type": "allocate", 
+                    "job_id": j_id,
+                    "user": job["user"],
+                    "duration": job["duration"],
+                    "Bundle_size": 1,
+                    "Bundle_min": 0, # Do not change!! This could be either 1 or = to N_layer_max
+                    "Bundle_max": 100000,
+                    "edge_id": self.__id,
+                    "Bundle_gpus": [job["Bundle_gpus"][0]],
+                    "Bundle_cpus": [job["Bundle_cpus"][0]],
+                    "Bundle_memory": [job["Bundle_memory"][0]],
+                    "Bundle_bw": [job["Bundle_bw"][0]],
+                    "Data": [None]
+                }
+            else:
+                data = {
+                    "type": "allocate", 
+                    "job_id": job["job_id"],
+                    "user": job["user"],
+                    "duration": job["duration"],
+                    "Bundle_size": len(job["Bundle_gpus"]),
+                    "Bundle_min": 0, # Do not change!! This could be either 1 or = to N_layer_max
+                    "Bundle_max": 100000,
+                    "edge_id": template[0],
+                    "Bundle_gpus": job["Bundle_gpus"],
+                    "Bundle_cpus": job["Bundle_cpus"],
+                    "Bundle_memory": job["Bundle_memory"],
+                    "Bundle_bw": job["Bundle_bw"],
+                    "auction_id": [template[0]] + [float("-inf") for _ in range(1, len(job["Bundle_gpus"]))],
+                    "bid": [template[1]] + [float("-inf") for _ in range(1, len(job["Bundle_gpus"]))],
+                    "timestamp": [template[2]] + [datetime.timestamp(datetime.now() - timedelta(days=1)) for _ in range(1, len(job["Bundle_gpus"]))],
+                    "Data": [template[3]] + [None for _ in range(1, len(job["Bundle_gpus"]))],
+                }
 
+            q.put(data)
+
+        job_id = job["job_id"]
+        global allocated_jobs, allocated_jobs_lock
+        global bids, bids_lock
+
+        new_job_id = job_id + "-0"
+        forge_request(new_job_id)
+        with self.__last_msg_lock:
+            self.__last_msg[new_job_id] = time.time()
+
+        # print("before", time.time())
+        while True:
+            need_to_sleep = False
+            sleep_time = 0
+            with self.__last_msg_lock:
+                last_msg_time = self.__last_msg[new_job_id]
+                curtime = time.time()
+                if curtime - last_msg_time <= self.__allocation_timeout:
+                    need_to_sleep = True
+                    sleep_time = self.__allocation_timeout - (curtime - last_msg_time)
+            
+            if need_to_sleep:
+                time.sleep(sleep_time)
+            else:
+                with bids_lock:
+                    template = [
+                        bids[new_job_id]["auction_id"][0],
+                        bids[new_job_id]["bid"][0],
+                        bids[new_job_id]["timestamp"][0],
+                        bids[new_job_id]["Data"][0]
+                    ]
+
+                forge_request(job_id, template)
+                break
+        
+        # print("before2", time.time())
+        # print(bids)
+        with self.__last_msg_lock:
+            self.__last_msg[job_id] = time.time()
+        
         while True:
             need_to_sleep = False
             sleep_time = 0
@@ -1038,11 +1119,10 @@ class PNode:
             else:
                 with bids_lock:
                     if float("-inf") in bids[job_id]["auction_id"]:
-                        print(bids)
-                        print(f"Couldn't find an allocation for job {job_id}")
-                        print(bids[job_id]["auction_id"])
+                        # print(bids)
+                        print(time.time(), f"Couldn't find an allocation for job {job_id}: {bids[job_id]["auction_id"]}")
                     else:
-                        print(f"Allocating job {job_id}. Auction id: {bids[job_id]['auction_id']}")
+                        print(f"Allocating job {job_id}. Auction id: {bids[job_id]['auction_id']}. Bid: {bids[job_id]['bid']}")
                         self.__deploy_application(job_id, cpus)
                         
                 break
@@ -1079,7 +1159,11 @@ class PNode:
                             self.__counter[self.__item["job_id"]] = 0
                             if self.__item["edge_id"] == None and self.__item["type"] == "allocate":
                                 self.__tasks_from_clients.append(self.__item["job_id"])
-                                threading.Thread(target=self.__check_allocation, args=(self.__item["job_id"], copy.deepcopy(self.__item["Bundle_cpus"]))).start()
+                                threading.Thread(target=self.__check_allocation, args=(copy.deepcopy(self.__item), copy.deepcopy(self.__item["Bundle_cpus"]))).start()
+                                first_msg = False
+                                del self.__counter[self.__item["job_id"]]
+                                break
+
                         self.__counter[self.__item["job_id"]] += 1
 
                         # differentiate bidding based on the type of the message
@@ -1123,7 +1207,7 @@ class PNode:
                     raise Empty
 
                 for i in _items:
-                    q[self.__id].put(i)
+                    q.put(i)
                 break
 
         return items
