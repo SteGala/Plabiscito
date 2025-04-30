@@ -41,7 +41,8 @@ class Endpoint:
         self.__active = True
         self.__node_name = node_name
         self.__node_id = node_id
-        self.__available_bw = available_bw
+        self.__available_bw = float(available_bw)
+        self.__initial_bw = float(available_bw)
         if countHop:
             self.__hopcount = get_hop_count(self.__ip, self.__port)
         else:
@@ -50,6 +51,12 @@ class Endpoint:
     def get_available_bw(self):
         return self.__available_bw
     
+    def consume_bw(self, bw):
+        self.__available_bw -= bw
+  
+    def release_bw(self, bw):
+        self.__available_bw += bw
+
     def get_url(self):
         return f"http://{self.__ip}:{self.__port}"
     
@@ -101,7 +108,7 @@ class Endpoint:
             return False
         
     def __str__(self):
-        return f"{self.__node_name} ({self.__ip}:{self.__port}) Hop distance: {self.__hopcount} Available bw: {self.__available_bw}"
+        return f"{self.__node_name} ({self.__ip}:{self.__port}) Hop distance: {self.__hopcount} Available bw: {self.__available_bw}/{self.__initial_bw}"
 
     def __eq__(self, other):
         return self.__ip == other.__ip and self.__port == other.__port

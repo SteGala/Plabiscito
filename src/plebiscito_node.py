@@ -260,7 +260,7 @@ class PNode:
                 print(f"Exceeded timeout for job {job_id}")
 
 
-    def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", 1, "localhost", "9191"), neighbors_ep=[], reduce_packets=False, queue_timeout=0.05, allocation_timeout=5, env=Environment.BARE_METAL, log_level=logging.DEBUG, initial_res=[]):
+    def __init__(self, id, utility=Utility.LGF, self_ep=Endpoint("e", 1, "localhost", "9191", 10, countHop=False), neighbors_ep=[], reduce_packets=False, queue_timeout=0.05, allocation_timeout=5, env=Environment.BARE_METAL, log_level=logging.DEBUG, initial_res=[]):
         global bids, bids_lock, q, neighbors_endpoint, id_node, self_endpoint, proxy_port, environment, kubernetes_client
 
         self.__logger = logging.getLogger('Plebiscito')
@@ -303,13 +303,21 @@ class PNode:
 
         self.__logger.info(f"Initialization completed.")
         print(f"Initialization completed.", flush=True)
+        self.display_status()
+
+    def display_status(self):
         print()
-        print("------SUMMARY------", flush=True)
-        print(self_endpoint)
+        print("------------------SUMMARY------------------", flush=True)
+        print(f"Node ID: {self.__id}", flush=True)
+        print(f"Available CPU: {self.__updated_cpu}/{self.__initial_cpu}", flush=True)
+        print(f"Available GPU: {self.__updated_gpu}/{self.__initial_gpu}", flush=True)
+        print(f"Available Memory: {self.__updated_memory}/{self.__initial_memory}", flush=True)
+        print("Self endpoint:", flush=True)
+        print(f"  - {self_endpoint}", flush=True)
         print("Neighbors:", flush=True)
         for e in neighbors_endpoint:
             print(f"  - {e}", flush=True)
-        print("-------------------", flush=True)
+        print("-------------------------------------------", flush=True)
         print()
 
     def get_avail_gpu(self):
@@ -387,7 +395,7 @@ class PNode:
             if len(self.__layer_bid_already[self.__item["job_id"]]) != 1:
                 self.__layer_bid_already[self.__item["job_id"]][0] = True
 
-    def __utility_function(self, avail_cpu, avail_gpu, layer_id, server_winner):
+    def __utility_function(self, avail_cpu, avail_gpu, layer_id):
         global neighbors_endpoint
 
         if self.__utility == Utility.LGF:
@@ -397,16 +405,21 @@ class PNode:
         if self.__utility == Utility.LCF:
             return avail_cpu
         if self.__utility == Utility.LCF_BW:
+            global bids, bids_lock
+
+            server_winner = None
+            with bids_lock:
+                if len(bids[self.__item["job_id"]]["auction_id"]) > 1:
+                    server_winner = bids[self.__item["job_id"]]["auction_id"][0] if int(bids[self.__item["job_id"]]["auction_id"][0]) != int(self.__id) else None
+            
             if server_winner is None:
                 return avail_cpu
             
-            if layer_id == 0 or (layer_id != 0 and server_winner == self.__id):
-                return avail_cpu
-            
-            for e in neighbors_endpoint:
-                print(f"e.get_node_id(): {e.get_node_id()} server_winner: {server_winner}")
-                if int(e.get_node_id()) == int(server_winner):
-                    return avail_cpu/(e.get_hop_count()/2)
+            for ep in neighbors_endpoint:
+                if int(ep.get_node_id()) == int(server_winner):
+                    break
+
+            return avail_cpu * (ep.get_available_bw() / 20)
 
     def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock, neighbors_endpoint
@@ -501,11 +514,23 @@ class PNode:
                 return True
             return False
 
-    def __can_host(self, i, bw_aware=False):
-        if not bw_aware:
+    def __can_host(self, i):
+        global bids, bids_lock
+
+        server_winner = None
+        with bids_lock:
+            if len(bids[self.__item["job_id"]]["auction_id"]) > 1:
+                server_winner = bids[self.__item["job_id"]]["auction_id"][0] if int(bids[self.__item["job_id"]]["auction_id"][0]) != int(self.__id) else None
+        
+        if self.__utility is Utility.LCF_BW and server_winner is not None:
+            for ep in neighbors_endpoint:
+                if int(ep.get_node_id()) == int(server_winner):
+                    break
+            
             if (not self.__layer_bid_already[self.__item["job_id"]][i] and
                     self.__item["Bundle_gpus"][i] <= self.__updated_gpu and 
                     self.__item["Bundle_cpus"][i] <= self.__updated_cpu and 
+                    self.__item["Bundle_bw"][i] <= ep.get_available_bw() and
                     self.__item["Bundle_memory"][i] <= self.__updated_memory): 
                 return True
             return False
@@ -523,18 +548,14 @@ class PNode:
         found = False
             
         bidtime = datetime.timestamp(datetime.now())
-        server_winner = None
         
         for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
             # never bid on this layer, try to see if I can outbit        
             if self.__layer_bid_already[self.__item["job_id"]][i] == True:
                 continue
 
-            if i == 0:
-                server_winner = tmp_bid["auction_id"][i]
-
             if self.__can_host(i):
-                curr_bid = self.__utility_function(self.__updated_cpu, self.__updated_gpu, i, server_winner)
+                curr_bid = self.__utility_function(self.__updated_cpu, self.__updated_gpu, i)
                 #print(curr_bid, tmp_bid["bid"][i])
                 if curr_bid > tmp_bid["bid"][i] or (curr_bid == tmp_bid["bid"][i] and self.__id < tmp_bid["auction_id"][i]):
                     found = True
@@ -546,8 +567,8 @@ class PNode:
                     self.__updated_gpu -= self.__item["Bundle_gpus"][i] 
                     self.__updated_memory -= self.__item["Bundle_memory"][i] 
 
-                    if i == 0:
-                        server_winner = tmp_bid["auction_id"][i]
+                    for ep in neighbors_endpoint:
+                        ep.consume_bw(self.__item["Bundle_bw"][i])
                     
                     self.__layer_bid_already[self.__item["job_id"]][i] = True
                     break
@@ -899,27 +920,26 @@ class PNode:
         cpu = 0
         gpu = 0
         mem = 0
+        bw = 0
 
-        first_1 = False
-        first_2 = False
         for i in range(len(tmp_local["auction_id"])):
             if (tmp_local["auction_id"][i] == self.__id and prev_bet["auction_id"][i] != self.__id):
                 cpu -= self.__item["Bundle_cpus"][i]
                 gpu -= self.__item["Bundle_gpus"][i]
                 mem -= self.__item["Bundle_memory"][i]
-                if not first_1:
-                    first_1 = True
+                bw -= self.__item["Bundle_bw"][i]
             elif (tmp_local["auction_id"][i] != self.__id and prev_bet["auction_id"][i] == self.__id):
                 cpu += self.__item["Bundle_cpus"][i]
                 gpu += self.__item["Bundle_gpus"][i]
                 mem += self.__item["Bundle_memory"][i]
-
-                if not first_2:
-                    first_2 = True
+                bw += self.__item["Bundle_bw"][i]
 
         self.__updated_cpu += cpu
         self.__updated_gpu += gpu
         self.__updated_memory += mem
+
+        for ep in neighbors_endpoint:
+            ep.release_bw(bw)
 
         with bids_lock:
             bids[self.__item["job_id"]] = copy.deepcopy(tmp_local)
@@ -1095,12 +1115,14 @@ class PNode:
                 with bids_lock:
                     if float("-inf") in bids[job_id]["auction_id"]:
                         # print(bids)
-                        print(time.time(), f"Couldn't find an allocation for job {job_id}: {bids[job_id]["auction_id"]}")
+                        print(f"Couldn't find an allocation for job {job_id}: {bids[job_id]["auction_id"]}")
                     else:
                         print(f"Allocating job {job_id}. Auction id: {bids[job_id]['auction_id']}. Bid: {bids[job_id]['bid']}")
                         self.__deploy_application(job_id, cpus)
                         
                 break
+
+        self.display_status()
                 
     def __work(self, end_processing):
         global bids, bids_lock      

@@ -73,6 +73,8 @@ if __name__ == '__main__':
             bw = float(sys.argv[5])
             mem = float(sys.argv[6])
             replicas = int(sys.argv[7])
+            if replicas <= 1:
+                raise ValueError("Number of replicas must be greater than 1")
             instances = int(sys.argv[8])
         except ValueError as e:
             raise e
