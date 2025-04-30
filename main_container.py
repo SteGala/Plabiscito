@@ -66,16 +66,6 @@ def read_env_variable():
     except ValueError:
         print("Error: Node MEM must an float")
         sys.exit(1)
-
-    bw = os.getenv('BW', -1)
-    if bw == -1:
-        print("Error: BW available not found")
-        sys.exit(1)
-    try:
-        bw = float(bw)
-    except ValueError:
-        print("Error: Node BW must an float, current value is: ", bw)
-        sys.exit(1)
         
     utility = os.getenv('UTILITY', "LGF")
     try:
@@ -84,7 +74,7 @@ def read_env_variable():
         print(e)
         sys.exit(1)
 
-    return node_id, node_name, address, port, neighbors, [cpu, gpu, mem, bw], utility
+    return node_id, node_name, address, port, neighbors, [cpu, gpu, mem], utility
 
 if __name__ == '__main__':
     print("Starting Plebiscito")

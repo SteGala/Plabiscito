@@ -283,11 +283,9 @@ class PNode:
             kubernetes_client = KubernetesClient()
 
         # TODO: update the initial values
-        self.__initial_bw = initial_res[3]
         self.__initial_cpu = initial_res[0]
         self.__initial_gpu = initial_res[1]
         self.__initial_memory = initial_res[2]
-        self.__updated_bw = self.__initial_bw
         self.__updated_gpu = self.__initial_gpu
         self.__updated_cpu = self.__initial_cpu
         self.__updated_memory = self.__initial_memory
@@ -389,7 +387,7 @@ class PNode:
             if len(self.__layer_bid_already[self.__item["job_id"]]) != 1:
                 self.__layer_bid_already[self.__item["job_id"]][0] = True
 
-    def __utility_function(self, avail_bw, avail_cpu, avail_gpu, layer_id, server_winner):
+    def __utility_function(self, avail_cpu, avail_gpu, layer_id, server_winner):
         global neighbors_endpoint
 
         if self.__utility == Utility.LGF:
@@ -503,14 +501,21 @@ class PNode:
                 return True
             return False
 
-    def __can_host(self, i, diff_cpu=0, diff_gpu=0, diff_bw=0, diff_memory=0):
-        if (not self.__layer_bid_already[self.__item["job_id"]][i] and
-                self.__item["Bundle_gpus"][i] <= self.__updated_gpu - diff_gpu and 
-                self.__item["Bundle_cpus"][i] <= self.__updated_cpu - diff_cpu and 
-                self.__item["Bundle_bw"][i] <= self.__updated_bw - diff_bw and
-                self.__item["Bundle_memory"][i] <= self.__updated_memory - diff_memory): 
-            return True
-        return False
+    def __can_host(self, i, bw_aware=False):
+        if not bw_aware:
+            if (not self.__layer_bid_already[self.__item["job_id"]][i] and
+                    self.__item["Bundle_gpus"][i] <= self.__updated_gpu and 
+                    self.__item["Bundle_cpus"][i] <= self.__updated_cpu and 
+                    self.__item["Bundle_memory"][i] <= self.__updated_memory): 
+                return True
+            return False
+        else:
+            if (not self.__layer_bid_already[self.__item["job_id"]][i] and
+                    self.__item["Bundle_gpus"][i] <= self.__updated_gpu and 
+                    self.__item["Bundle_cpus"][i] <= self.__updated_cpu and 
+                    self.__item["Bundle_memory"][i] <= self.__updated_memory): 
+                return True
+            return False
     
     def __bid_network(self): 
         global bids, bids_lock
@@ -529,7 +534,7 @@ class PNode:
                 server_winner = tmp_bid["auction_id"][i]
 
             if self.__can_host(i):
-                curr_bid = self.__utility_function(self.__updated_bw, self.__updated_cpu, self.__updated_gpu, i, server_winner)
+                curr_bid = self.__utility_function(self.__updated_cpu, self.__updated_gpu, i, server_winner)
                 #print(curr_bid, tmp_bid["bid"][i])
                 if curr_bid > tmp_bid["bid"][i] or (curr_bid == tmp_bid["bid"][i] and self.__id < tmp_bid["auction_id"][i]):
                     found = True
