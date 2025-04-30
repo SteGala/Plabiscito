@@ -6,6 +6,7 @@ class Utility(Enum):
     SGF = 2
     LCF = 3
     LCF_BW = 4
+    SCF = 5
     
 # create a function that maps a string to a Utility enum
 def str_to_utility(s):
@@ -17,6 +18,8 @@ def str_to_utility(s):
         return Utility.LCF
     elif s == "LCF_BW":
         return Utility.LCF_BW
+    elif s == "SCF":
+        return Utility.SCF
     else:
         raise ValueError("Invalid utility string")
        

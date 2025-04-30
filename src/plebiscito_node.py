@@ -404,6 +404,8 @@ class PNode:
             return self.__initial_gpu - avail_gpu
         if self.__utility == Utility.LCF:
             return avail_cpu
+        if self.__utility == Utility.SCF:
+            return self.__initial_cpu - avail_cpu
         if self.__utility == Utility.LCF_BW:
             global bids, bids_lock
 
@@ -419,7 +421,7 @@ class PNode:
                 if int(ep.get_node_id()) == int(server_winner):
                     break
 
-            return avail_cpu * (ep.get_available_bw() / 20)
+            return avail_cpu * (ep.get_relative_bw())
 
     def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock, neighbors_endpoint
@@ -549,6 +551,24 @@ class PNode:
             
         bidtime = datetime.timestamp(datetime.now())
         
+        with bids_lock:
+            bw = 0
+            for b in bids:
+                if bids[b]["Bundle_size"] != 1:
+                    server_winner = bids[b]["auction_id"][0]
+                    if (server_winner) == (self.__id):
+                        for i in range(1, len(bids[b]["auction_id"])):
+                            if bids[b]["auction_id"][i] != self.__id:
+                                bw += bids[b]["Bundle_bw"][i]
+                    else:
+                        for i in range(1, len(bids[b]["auction_id"])):
+                            if bids[b]["auction_id"][i] == self.__id:
+                                bw += bids[b]["Bundle_bw"][i]
+        
+        for ep in neighbors_endpoint:
+            ep.reset_bw()
+            ep.consume_bw(bw)
+        
         for i in range(len(self.__layer_bid_already[self.__item["job_id"]])):
             # never bid on this layer, try to see if I can outbit        
             if self.__layer_bid_already[self.__item["job_id"]][i] == True:
@@ -569,8 +589,8 @@ class PNode:
 
                     server_winner = None
                     with bids_lock:
-                        if len(tmp_bid[self.__item["job_id"]]["auction_id"]) > 1:
-                            server_winner = tmp_bid[self.__item["job_id"]]["auction_id"][0] if int(tmp_bid[self.__item["job_id"]]["auction_id"][0]) != int(self.__id) else None
+                        if len(tmp_bid["auction_id"]) > 1:
+                            server_winner = tmp_bid["auction_id"][0] if int(tmp_bid["auction_id"][0]) != int(self.__id) else None
 
                     if server_winner is not None:
                         for ep in neighbors_endpoint:
@@ -598,6 +618,7 @@ class PNode:
             prev_bet = copy.deepcopy(bids[self.__item["job_id"]])
         
         index = 0 if self.__item["Bundle_size"] == 1 else 1
+        start_id = index
         reset_flag = False
         reset_ids = []
         bid_time = datetime.timestamp(datetime.now())
@@ -801,6 +822,7 @@ class PNode:
                             z_kj,
                             y_kj,
                             t_kj,
+                            d_kj
                         )
                     elif y_kj == y_ij and z_kj < z_ij:
                         rebroadcast = True
@@ -926,40 +948,39 @@ class PNode:
         cpu = 0
         gpu = 0
         mem = 0
-        bw = 0
+        # bw = 0
 
-        for i in range(len(tmp_local["auction_id"])):
+        for i in range(start_id, len(tmp_local["auction_id"])):
             if (tmp_local["auction_id"][i] == self.__id and prev_bet["auction_id"][i] != self.__id):
                 cpu -= self.__item["Bundle_cpus"][i]
                 gpu -= self.__item["Bundle_gpus"][i]
                 mem -= self.__item["Bundle_memory"][i]
-                if self.__item["Bundle_size"] > 1 and int(tmp_local["auction_id"][0]) != int(self.__id):
-                    bw -= self.__item["Bundle_bw"][i]
+                # if self.__item["Bundle_size"] > 1 and int(tmp_local["auction_id"][0]) != int(self.__id):
+                #     bw -= self.__item["Bundle_bw"][i]
             elif (tmp_local["auction_id"][i] != self.__id and prev_bet["auction_id"][i] == self.__id):
                 cpu += self.__item["Bundle_cpus"][i]
                 gpu += self.__item["Bundle_gpus"][i]
                 mem += self.__item["Bundle_memory"][i]
-                if self.__item["Bundle_size"] > 1 and int(tmp_local["auction_id"][0]) != int(self.__id):
-                    bw += self.__item["Bundle_bw"][i]
+                # if self.__item["Bundle_size"] > 1 and int(tmp_local["auction_id"][0]) != int(self.__id):
+                #     bw += self.__item["Bundle_bw"][i]
 
         self.__updated_cpu += cpu
         self.__updated_gpu += gpu
         self.__updated_memory += mem
 
-        for ep in neighbors_endpoint:
-            ep.release_bw(bw)
+        # for ep in neighbors_endpoint:
+        #     ep.release_bw(bw)
 
-        bw_server = 0
-        if self.__item["Bundle_size"] > 1 and int(tmp_local["auction_id"][0]) == int(self.__id):
-            for i in range(1, len(tmp_local["auction_id"])):
-                if tmp_local["auction_id"][i] != self.__id:
-                    bw_server += self.__item["Bundle_bw"][i]
-            for i in range(1, len(prev_bet["auction_id"])):
-                if prev_bet["auction_id"][i] == self.__id:
-                    bw_server -= self.__item["Bundle_bw"][i]
+        # bw_server = 0
+        # if self.__item["Bundle_size"] > 1 and (tmp_local["auction_id"][0]) == (self.__id):
+        #     for i in range(1, len(tmp_local["auction_id"])):
+        #         if (tmp_local["auction_id"][i]) == (self.__id) and prev_bet["auction_id"][i] != (self.__id):
+        #             bw_server -= self.__item["Bundle_bw"][i]
+        #         elif (tmp_local["auction_id"][i]) != (self.__id) and prev_bet["auction_id"][i] == (self.__id):
+        #             bw_server += self.__item["Bundle_bw"][i]
             
-            for ep in neighbors_endpoint:
-                ep.consume_bw(bw_server)
+        #     for ep in neighbors_endpoint:
+        #         ep.release_bw(bw_server)
 
 
         with bids_lock:

@@ -51,6 +51,12 @@ class Endpoint:
     def get_available_bw(self):
         return self.__available_bw
     
+    def reset_bw(self):
+        self.__available_bw = self.__initial_bw
+    
+    def get_relative_bw(self):
+        return self.__available_bw / self.__initial_bw
+    
     def consume_bw(self, bw):
         self.__available_bw -= bw
   
