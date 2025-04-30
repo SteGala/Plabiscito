@@ -82,7 +82,7 @@ if __name__ == '__main__':
         client = PClient(f"http://{ip}", port, "client1")
         for i in range(instances):
             client.request_allocation(cpus=[cpu for _ in range(replicas)], gpus=[gpu for _ in range(replicas)], bw=[bw for _ in range(replicas)], mem=[mem for _ in range(replicas)], duration=5)
-            time.sleep(5)
+            time.sleep(30)
     else:
         print("Use with [Plebiscito IP] [Plebiscito port] [n_instances].") 
 
