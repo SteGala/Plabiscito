@@ -18,14 +18,45 @@ function check_kubectl() {
 
 # Function to check if required arguments are provided
 function check_arguments() {
-    if [ -z "$CPU" ] || [ -z "$GPU" ] || [ -z "$MEMORY" ] || [ -z "$BW" ] || [ -z "$UTILITY" ]; then
+    if [ -z "$CPU" ] || [ -z "$GPU" ] || [ -z "$MEMORY" ] || [ -z "$UTILITY" ]; then
         echo "Usage: $0 <cpu> <gpu> <memory> <bw> <utility>"
         echo "  <cpu>            Available CPU resources for each node."
         echo "  <gpu>            Available GPU resources for each node."
         echo "  <memory>         Available memory resources for each node."
-        echo "  <bw>             Default bandwidth for nodes."
         echo "  <utility>        Utility function to use for customization (LGF/SGF supported)."
         exit 1
+    fi
+}
+
+get_bandwidth_value() {
+    local src="$1"
+    local dst="$2"
+    local filename="iperf_bw_results.txt"
+    local default_val="10"
+
+    # Check if file exists
+    if [[ ! -f "$filename" ]]; then
+        echo "$default_val"
+        return
+    fi
+
+    # Declare map and populate it
+    declare -A bandwidth_map
+
+    while read -r line; do
+        # Skip empty lines
+        [[ -z "$line" ]] && continue
+        read -r s d val unit _ <<< "$line"
+        key="${s}_${d}"
+        bandwidth_map["$key"]="$val"
+    done < "$filename"
+
+    # Lookup
+    key="${src}_${dst}"
+    if [[ -n "${bandwidth_map[$key]}" ]]; then
+        echo "${bandwidth_map[$key]}"
+    else
+        echo "$default_val"
     fi
 }
 
@@ -33,8 +64,7 @@ function check_arguments() {
 CPU=$1
 GPU=$2
 MEMORY=$3
-BW=$4
-UTILITY=$5
+UTILITY=$4
 
 # Validate arguments
 check_arguments
@@ -109,8 +139,9 @@ for node in $nodes; do
             fi
             NODE_IP=$(kubectl get node "$node2_name" -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}')
             NODE_PORT=$(kubectl get svc "plebi-$node2_name" -n plebi -o jsonpath='{.spec.ports[*].nodePort}')
+            AVAIL_BW=$(get_bandwidth_value "$node_name" "$node2_name")
 
-            ENDPOINTS="${ENDPOINTS}$node2_name:$count2:$NODE_IP:$NODE_PORT"
+            ENDPOINTS="${ENDPOINTS}$node2_name:$count2:$NODE_IP:$NODE_PORT:$AVAIL_BW"
         fi
         count2=$((count2+1))
     done 
@@ -122,7 +153,6 @@ for node in $nodes; do
         -e "s/{{CPU}}/$CPU/g" \
         -e "s/{{GPU}}/$GPU/g" \
         -e "s/{{MEMORY}}/$MEMORY/g" \
-        -e "s/{{BW}}/$BW/g" \
         -e "s/{{UTILITY}}/$UTILITY/g" \
         -e "s/{{NEIGHBORS_LIST}}/$ENDPOINTS/g" \
         "$TEMPLATE_DEPLOYMENT" > "$TEMP_FILE_DEPLOYMENT"

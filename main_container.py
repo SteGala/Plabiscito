@@ -34,7 +34,7 @@ def read_env_variable():
     else:
         neighbors = neighbors.split(",")
         neighbors = [x.split(":") for x in neighbors]
-        neighbors = [(x[0], x[1], x[2], x[3]) for x in neighbors]
+        neighbors = [(x[0], x[1], x[2], x[3], x[4]) for x in neighbors]
 
     cpu = os.getenv('CPU', -1)
     if cpu == -1:
@@ -94,8 +94,8 @@ if __name__ == '__main__':
 
     neighbors_ep = []
     for neighbor in neighbors:
-        neighbors_ep.append(Endpoint(neighbor[0], neighbor[1], neighbor[2], neighbor[3], countHop=True))
+        neighbors_ep.append(Endpoint(neighbor[0], neighbor[1], neighbor[2], neighbor[3], neighbor[4], countHop=True))
 
-    self_ep = Endpoint(nodeName, nodeId, address, port, countHop=False)
+    self_ep = Endpoint(nodeName, nodeId, address, port, 10, countHop=False)
     node = PNode(id=nodeId, self_ep=self_ep, neighbors_ep=neighbors_ep, env=Environment.KUBERNETES, initial_res=resources, utility=utility)
     node.start_daemon()

@@ -273,7 +273,6 @@ class PNode:
         self_endpoint = self_ep
         neighbors_endpoint = neighbors_ep
         proxy_port = self_ep.get_port() + 1
-        # self.__active_endpoints = {}
         self.__reduce_packets = reduce_packets
         self.__queue_timeout = queue_timeout
         self.__allocation_timeout = allocation_timeout
@@ -326,9 +325,6 @@ class PNode:
 
     def get_avail_memory(self):
         return self.__updated_memory
-
-    def get_available_resources(self):
-        return (self.__updated_cpu, self.__updated_gpu, self.__updated_memory, self.__updated_bw)
 
     def __run_http_server(self):
         global self_endpoint
@@ -518,25 +514,8 @@ class PNode:
     
     def __bid_network(self): 
         global bids, bids_lock
-        # print(len(bids[self.__item["job_id"]]["auction_id"]))
-        with bids_lock:
-            tmp_bid = copy.deepcopy(bids[self.__item["job_id"]])
-            self.__updated_bw = self.__initial_bw
-            for key in bids:
-                # If I won the server
-                if bids[key]["auction_id"][0] == self.__id:
-                    for i in range(1, len(bids[key]["auction_id"])):
-                        if bids[key]["auction_id"][i] != self.__id:
-                            self.__updated_bw -= bids[key]["Bundle_bw"][i] 
-                
-                # If somebody else won the server   
-                elif bids[key]["auction_id"][0] != float("-inf"):
-                    for i in range(1, len(bids[key]["auction_id"])):
-                        if bids[key]["auction_id"][i] == self.__id:
-                            self.__updated_bw -= bids[key]["Bundle_bw"][i]
-                
+        tmp_bid = copy.deepcopy(bids[self.__item["job_id"]])
         found = False
-        #print(f"Updated BW: {self.__updated_bw}")
             
         bidtime = datetime.timestamp(datetime.now())
         server_winner = None
@@ -914,7 +893,6 @@ class PNode:
 
         cpu = 0
         gpu = 0
-        #bw = 0
         mem = 0
 
         first_1 = False
@@ -923,14 +901,12 @@ class PNode:
             if (tmp_local["auction_id"][i] == self.__id and prev_bet["auction_id"][i] != self.__id):
                 cpu -= self.__item["Bundle_cpus"][i]
                 gpu -= self.__item["Bundle_gpus"][i]
-                #bw -= self.__item["Bundle_bw"][i]
                 mem -= self.__item["Bundle_memory"][i]
                 if not first_1:
                     first_1 = True
             elif (tmp_local["auction_id"][i] != self.__id and prev_bet["auction_id"][i] == self.__id):
                 cpu += self.__item["Bundle_cpus"][i]
                 gpu += self.__item["Bundle_gpus"][i]
-                #bw += self.__item["Bundle_bw"][i]
                 mem += self.__item["Bundle_memory"][i]
 
                 if not first_2:
@@ -938,15 +914,9 @@ class PNode:
 
         self.__updated_cpu += cpu
         self.__updated_gpu += gpu
-        #self.__updated_bw += bw
         self.__updated_memory += mem
 
         with bids_lock:
-            # if bids[self.__item["job_id"]]["auction_id"][0] != tmp_local["auction_id"][0]:
-            #     for i in range(1, len(tmp_local["auction_id"])):
-            #         if tmp_local["auction_id"][i] != self.__id and tmp_local["auction_id"][i] != bids[self.__item["job_id"]]["auction_id"][i]:
-            #             self.__layer_bid_already[self.__item["job_id"]][i] = False
-
             bids[self.__item["job_id"]] = copy.deepcopy(tmp_local)
 
         return rebroadcast
