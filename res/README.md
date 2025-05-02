@@ -1,0 +1,1 @@
+![alt text](https://github.com/SteGala/Plabiscito/blob/main/res/rx_bandwidth_interface.png)

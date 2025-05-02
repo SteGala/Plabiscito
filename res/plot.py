@@ -126,9 +126,9 @@ def plot_cdfs_from_directories(base_path, file_id=0, file_name=None):
     plt.savefig(file_name)
     plt.clf()  # Clear the figure for the next plot
 
-plot_failure_severity(".", 0, "failure_severity.pdf")
-plot_bandwidth_boxplots(".", 1, "rx_bandwidth_interface.pdf")
-plot_bandwidth_boxplots(".", 2, "rx_bandwidth_localhost.pdf")
-plot_bandwidth_boxplots(".", 3, "tx_bandwidth_interface.pdf")
-plot_bandwidth_boxplots(".", 4, "tx_bandwidth_localhost.pdf")
-plot_cdfs_from_directories(".", 5, "training_time.pdf")
+plot_failure_severity(".", 0, "failure_severity.png")
+plot_bandwidth_boxplots(".", 1, "rx_bandwidth_interface.png")
+plot_bandwidth_boxplots(".", 2, "rx_bandwidth_localhost.png")
+plot_bandwidth_boxplots(".", 3, "tx_bandwidth_interface.png")
+plot_bandwidth_boxplots(".", 4, "tx_bandwidth_localhost.png")
+plot_cdfs_from_directories(".", 5, "training_time.png")
