@@ -1126,6 +1126,11 @@ class PNode:
                 time.sleep(sleep_time)
             else:
                 with bids_lock:
+                    if new_job_id not in bids:
+                        with self.__last_msg_lock:
+                            self.__last_msg[new_job_id] = time.time()
+                            continue
+                        
                     template = [
                         bids[new_job_id]["auction_id"][0],
                         bids[new_job_id]["bid"][0],
