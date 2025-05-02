@@ -120,7 +120,7 @@ def plot_cdfs_from_directories(base_path, file_id=0, file_name=None):
 
     plt.xlabel("Training Time (s)")
     plt.ylabel("CDF")
-    plt.legend(title="Directory", bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.legend(title="Algorithms", bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
     plt.savefig(file_name)
