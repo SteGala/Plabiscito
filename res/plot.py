@@ -4,7 +4,10 @@ import matplotlib as mat
 import re
 import seaborn as sns
 import numpy as np
+import tikzplotlib
 
+
+tot_nodes = 6
 
 def parse_bandwidth(value):
     if pd.isna(value):
@@ -51,6 +54,10 @@ def plot_failure_severity(base_path, file_id=0, filename=None):
             for key in occ:
                 data[dir_name].append(occ[key])
 
+            if len(occ) < tot_nodes:
+                for i in range(tot_nodes - len(occ)):
+                    data[dir_name].append(0)
+
     # Convert to a long-format DataFrame
     rows = []
     for label, values in data.items():
@@ -60,9 +67,11 @@ def plot_failure_severity(base_path, file_id=0, filename=None):
 
     # Plot
     sns.barplot(data=df, x="Algorithm", y="Failed applications", estimator="mean", errorbar=None, color="red", alpha=0.5)
-    sns.stripplot(data=df, x="Algorithm", y="Failed applications", color="black", size=6, jitter=False)
+    sns.stripplot(data=df, x="Algorithm", y="Failed applications", color="black", size=6, jitter=True)
     mat.pyplot.tight_layout()
     mat.pyplot.savefig(filename)  
+    tikzplotlib.save(filename)
+
     mat.pyplot.clf()  # Clear the figure for the next plot
 
 def plot_bandwidth_boxplots(base_path, file_id=0, filename=None):

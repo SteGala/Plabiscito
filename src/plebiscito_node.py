@@ -420,8 +420,10 @@ class PNode:
             for ep in neighbors_endpoint:
                 if int(ep.get_node_id()) == int(server_winner):
                     break
-
-            return avail_cpu * (ep.get_relative_bw())
+            rel_bw = ep.get_relative_bw()
+            if rel_bw > 0.9:
+                rel_bw = 1
+            return avail_cpu * (1 + self.__id*0.0000001) * (rel_bw)
 
     def __forward_to_neighbohors(self, custom_dict=None, resend_bid=False, first_msg=False):
         global bids, bids_lock, neighbors_endpoint
